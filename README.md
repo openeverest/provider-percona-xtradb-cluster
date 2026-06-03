@@ -35,7 +35,7 @@ make run
 kubectl apply -f examples/instance-simple.yaml
 ```
 
-Watch the provider logs and check the PSMDB resource:
+Watch the provider logs and check the PXC resource:
 
 ```bash
 kubectl get pxc
