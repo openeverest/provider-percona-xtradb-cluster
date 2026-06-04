@@ -1,0 +1,24 @@
+apiVersion: v2
+name: provider-percona-xtradb-cluster
+description: A Helm chart for deploying the OpenEverest Percona XtraDB Cluster provider
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openeverest
+  - percona
+  - xtradb
+  - provider
+  - database
+home: https://github.com/openeverest/provider-percona-xtradb-cluster
+sources:
+  - https://github.com/openeverest/provider-percona-xtradb-cluster
+maintainers:
+  - name: OpenEverest Contributors
+# TODO: Add openeverest chart as a dependency once it is published.
+# For now, OpenEverest (operator + CRDs) must be installed separately before installing this chart.
+dependencies:
+  - name: pxc-operator
+    alias: operator
+    version: "1.19.1"
+    repository: https://percona.github.io/percona-helm-charts/

@@ -1,0 +1,25 @@
+# Component type version catalog.
+# Add new versions here when upstream releases are available.
+# Mark exactly one version per type as `default: true`.
+
+componentTypes:
+  pxc:
+    versions:
+    - version: "8.4.7-7.1"
+      image: percona/percona-xtradb-cluster:8.4.7-7.1
+      default: true
+  pmm:
+    versions:
+    - version: "3.5.0"
+      image: percona/pmm-client:3.5.0
+      default: true
+
+# Version bundles — curated sets of component versions known to work together.
+# Users set spec.version on an Instance to select a bundle.
+# The bundle with default: true is used when spec.version is omitted.
+versions:
+- name: "8.4.7"
+  default: true
+  components:
+    engine: "8.4.7-7.1"
+    monitoring: "3.5.0"

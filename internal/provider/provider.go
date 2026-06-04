@@ -16,6 +16,8 @@ package provider
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
@@ -40,7 +42,7 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 		},
 		VolumeExpansionEnabled: true,
 		// FIXME
-		CRVersion: "1.19.0",
+		CRVersion: "1.19.1",
 	}
 }
 
@@ -146,12 +148,6 @@ func StatusPXC(c *controller.Context) (controller.Status, error) {
 	}
 }
 
-// buildConnectionDetails reads the PXC Users secret and combines it with host info
-// to produce a set of well-known connection details.
-func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster) (controller.ConnectionDetails, error) {
-	return controller.ConnectionDetails{}, nil
-}
-
 // CleanupPXC handles deletion of the PXC cluster.
 func CleanupPXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
@@ -252,6 +248,47 @@ func (p *PXCProvider) RestoreWatches() []controller.WatchConfig {
 	return []controller.WatchConfig{
 		controller.WatchOwned(&pxcv1.PerconaXtraDBClusterRestore{}),
 	}
+}
+
+// buildConnectionDetails reads the PXC Users secret and combines it with host info
+// to produce a set of well-known connection details.
+func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster) (controller.ConnectionDetails, error) {
+	secretName := "everest-secrets-" + c.Name()
+	secret := &corev1.Secret{}
+	if err := c.Get(secret, secretName); err != nil {
+		return controller.ConnectionDetails{}, fmt.Errorf("failed to get credentials secret %s: %w", secretName, err)
+	}
+
+	// Adjust key names if your users secret uses different keys.
+	username := "root"
+	password := string(secret.Data["root"])
+
+	host := pxc.Status.Host
+	if host == "" {
+		// Fallback service name pattern if status host is not populated yet.
+		host = fmt.Sprintf("%s-pxc.%s.svc", c.Name(), c.Namespace())
+	}
+	port := "3306"
+
+	u := &url.URL{
+		Scheme: "mysql",
+		Host:   net.JoinHostPort(host, port),
+		Path:   "/",
+		User:   url.UserPassword(username, password),
+	}
+	q := u.Query()
+	q.Set("tls", "false")
+	u.RawQuery = q.Encode()
+
+	return controller.ConnectionDetails{
+		Type:     "mysql",
+		Provider: "percona-xtradb-cluster",
+		Host:     host,
+		Port:     port,
+		Username: username,
+		Password: password,
+		URI:      u.String(),
+	}, nil
 }
 
 // Compile-time interface checks
