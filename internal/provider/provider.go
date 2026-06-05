@@ -43,7 +43,9 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 		VolumeExpansionEnabled: true,
 		// FIXME
 		CRVersion: "1.19.1",
-		PXC:       &pxcv1.PXCSpec{},
+		PXC: &pxcv1.PXCSpec{
+			PodSpec: &pxcv1.PodSpec{},
+		},
 	}
 }
 
@@ -96,6 +98,11 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 	pxc.Spec.PXC.ImagePullPolicy = corev1.PullIfNotPresent
+	pxc.Spec.PXC.VolumeSpec = &pxcv1.VolumeSpec{
+		EmptyDir:              nil,
+		HostPath:              nil,
+		PersistentVolumeClaim: nil,
+	}
 
 	if err := c.Apply(pxc); err != nil {
 		return err
