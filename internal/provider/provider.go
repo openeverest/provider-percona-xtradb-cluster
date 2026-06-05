@@ -243,7 +243,7 @@ func (p *PXCProvider) BackupWatches() []controller.WatchConfig {
 	}
 }
 
-// RestoreWatches mirrors BackupWatches for PerconaServerMongoDBRestore.
+// RestoreWatches mirrors BackupWatches for PerconaXtraDBClusterRestore.
 func (p *PXCProvider) RestoreWatches() []controller.WatchConfig {
 	return []controller.WatchConfig{
 		controller.WatchOwned(&pxcv1.PerconaXtraDBClusterRestore{}),
