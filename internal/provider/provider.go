@@ -22,6 +22,7 @@ import (
 
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -99,9 +100,20 @@ func SyncPXC(c *controller.Context) error {
 	}
 	pxc.Spec.PXC.ImagePullPolicy = corev1.PullIfNotPresent
 	pxc.Spec.PXC.VolumeSpec = &pxcv1.VolumeSpec{
-		EmptyDir:              nil,
-		HostPath:              nil,
-		PersistentVolumeClaim: nil,
+		PersistentVolumeClaim: &corev1.PersistentVolumeClaimSpec{
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("6Gi"),
+				},
+			},
+		},
+	}
+	pxc.Spec.HAProxy = &pxcv1.HAProxySpec{
+		PodSpec: pxcv1.PodSpec{
+			Enabled: true,
+			Size:    1,
+			Image:   "percona/haproxy:2.8.17",
+		},
 	}
 
 	if err := c.Apply(pxc); err != nil {
