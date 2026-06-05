@@ -43,6 +43,7 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 		VolumeExpansionEnabled: true,
 		// FIXME
 		CRVersion: "1.19.1",
+		PXC:       &pxcv1.PXCSpec{},
 	}
 }
 
