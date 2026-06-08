@@ -20,5 +20,5 @@ maintainers:
 dependencies:
   - name: pxc-operator
     alias: operator
-    version: "1.19.1"
+    version: "1.20.0"
     repository: https://percona.github.io/percona-helm-charts/

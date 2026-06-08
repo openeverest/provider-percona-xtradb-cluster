@@ -40,7 +40,7 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 			Schedule: "0 4 * * *",
 		},
 		VolumeExpansionEnabled: true,
-		CRVersion:              "1.19.1",
+		CRVersion:              "1.20.0",
 		PXC: &pxcv1.PXCSpec{
 			PodSpec: &pxcv1.PodSpec{
 				VolumeSpec: &pxcv1.VolumeSpec{

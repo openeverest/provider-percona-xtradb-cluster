@@ -40,7 +40,7 @@ CHART_DIR ?= charts/provider-percona-xtradb-cluster
 K3D_CLUSTER_NAME ?= provider-pxc-test
 
 # PXC operator version used for CRD installation in CI
-PXC_OPERATOR_VERSION ?= 1.19.1
+PXC_OPERATOR_VERSION ?= 1.20.1
 
 .PHONY: help
 help: ## Display this help.
