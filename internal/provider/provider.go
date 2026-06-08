@@ -20,17 +20,15 @@ import (
 	"net/url"
 	"strings"
 
+	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
+	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
-	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
-
-	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 )
 
 // defaultSpec returns the default PerconaXtraDBClusterSpec for new instances.
@@ -42,10 +40,27 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 			Schedule: "0 4 * * *",
 		},
 		VolumeExpansionEnabled: true,
-		// FIXME
-		CRVersion: "1.19.1",
+		CRVersion:              "1.19.1",
 		PXC: &pxcv1.PXCSpec{
-			PodSpec: &pxcv1.PodSpec{},
+			PodSpec: &pxcv1.PodSpec{
+				VolumeSpec: &pxcv1.VolumeSpec{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimSpec{
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("6Gi"),
+							},
+						},
+					},
+				},
+				Size: 3,
+			},
+		},
+		HAProxy: &pxcv1.HAProxySpec{
+			PodSpec: pxcv1.PodSpec{
+				Enabled: true,
+				Size:    2,
+				Image:   "percona/haproxy:2.8.17",
+			},
 		},
 	}
 }
@@ -79,6 +94,7 @@ func SyncPXC(c *controller.Context) error {
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
 	// No need to check if engine is nil, it is guaranteed to be present by the validator
 	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas)
+	pxc.Spec.PXC.Size = *engine.Replicas
 
 	// Set the image: use the user-specified image if provided, otherwise resolve
 	// from the version bundle (engine.Version is populated by the provider-runtime)
@@ -99,22 +115,10 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 	pxc.Spec.PXC.ImagePullPolicy = corev1.PullIfNotPresent
-	pxc.Spec.PXC.VolumeSpec = &pxcv1.VolumeSpec{
-		PersistentVolumeClaim: &corev1.PersistentVolumeClaimSpec{
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse("6Gi"),
-				},
-			},
-		},
-	}
-	pxc.Spec.HAProxy = &pxcv1.HAProxySpec{
-		PodSpec: pxcv1.PodSpec{
-			Enabled: true,
-			Size:    1,
-			Image:   "percona/haproxy:2.8.17",
-		},
-	}
+
+	usersSecretName := "everest-secrets-" + c.Name()
+
+	pxc.Spec.SecretsName = usersSecretName
 
 	if err := c.Apply(pxc); err != nil {
 		return err
