@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -95,6 +96,17 @@ func SyncPXC(c *controller.Context) error {
 	// No need to check if engine is nil, it is guaranteed to be present by the validator
 	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas)
 	pxc.Spec.PXC.Size = *engine.Replicas
+
+	if engine.Config == nil {
+		switch engine.Replicas {
+		case pointer.Int32(1):
+			pxc.Spec.PXC.Configuration = pxcConfigSizeSmall
+		case pointer.Int32(3):
+			pxc.Spec.PXC.Configuration = pxcConfigSizeMedium
+		default:
+			pxc.Spec.PXC.Configuration = pxcConfigSizeLarge
+		}
+	}
 
 	// Set the image: use the user-specified image if provided, otherwise resolve
 	// from the version bundle (engine.Version is populated by the provider-runtime)
