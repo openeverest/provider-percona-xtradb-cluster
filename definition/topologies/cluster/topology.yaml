@@ -57,7 +57,7 @@ ui:
               uiType: number
               fieldParams:
                 label: "CPU"
-                defaultValue: 1
+                defaultValue: 4
                 step: 1
               validation:
                 min: 0.6
@@ -67,7 +67,7 @@ ui:
               uiType: number
               fieldParams:
                 label: "Memory"
-                defaultValue: 2
+                defaultValue: 8
                 step: 0.1
                 badge: "Gi"
                 badgeToApi: true
@@ -79,7 +79,7 @@ ui:
               uiType: number
               fieldParams:
                 label: "Disk"
-                defaultValue: 8
+                defaultValue: 100
                 badge: "Gi"
                 badgeToApi: true
               validation:
