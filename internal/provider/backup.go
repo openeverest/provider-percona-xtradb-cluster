@@ -29,7 +29,7 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	return out, nil
 }
 
-// CleanupBackup removes the operator PerconaXtraDBClusterBackup, honoring the
+// CleanupBackup removes the operator PerconaXtraDBClusterBackup created for the Backup CR.
 func (p *PXCProvider) CleanupBackup(c *controller.Context, backup *backupv1alpha1.Backup) (bool, error) {
 	return false, nil
 }
