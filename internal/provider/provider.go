@@ -140,7 +140,6 @@ func SyncPXC(c *controller.Context) error {
 	// Get the engine component spec
 	engine := c.Instance().Spec.Components[common.ComponentEngine]
 	// No need to check if engine is nil, it is guaranteed to be present by the validator
-	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas)
 	pxc.Spec.PXC.Size = *engine.Replicas
 
 	haproxyComponent, hasHAProxy := c.Instance().Spec.Components[common.ComponentHAProxy]
@@ -178,6 +177,15 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.HAProxy.Size = haproxySize
 		pxc.Spec.ProxySQL = nil
 	}
+
+	var proxyReplicas *int32
+	if pxc.Spec.ProxySQLEnabled() {
+		proxyReplicas = &pxc.Spec.ProxySQL.Size
+	}
+	if pxc.Spec.HAProxyEnabled() {
+		proxyReplicas = &pxc.Spec.HAProxy.Size
+	}
+	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas, proxyReplicas)
 
 	spec, err := c.ProviderSpec()
 	if err != nil {
@@ -252,13 +260,19 @@ func SyncPXC(c *controller.Context) error {
 }
 
 // unsafeFlags returns pxcv1.UnsafeFlags considering the given replicas configuration.
-func unsafeFlags(replicas *int32) pxcv1.UnsafeFlags {
+func unsafeFlags(replicas, proxyReplicas *int32) pxcv1.UnsafeFlags {
 	const productionSafeReplsetSize = 3
+	const productionSafeProxySize = 2
+
+	flags := pxcv1.UnsafeFlags{}
 	if replicas != nil && *replicas < productionSafeReplsetSize {
-		return pxcv1.UnsafeFlags{PXCSize: true}
+		flags.PXCSize = true
+	}
+	if proxyReplicas != nil && *proxyReplicas < productionSafeProxySize {
+		flags.ProxySize = true
 	}
 
-	return pxcv1.UnsafeFlags{}
+	return flags
 }
 
 // StatusPXC computes the current status of the PXC cluster.
