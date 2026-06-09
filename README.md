@@ -1,6 +1,6 @@
 # Percona Operator for MySQL based on Percona XtraDB Cluster Provider
 
-This directory contains a implementation of a Percona Operator for MySQL based on Percona XtraDB Cluster (PXC) provider.
+This directory contains an implementation of a Percona Operator for MySQL based on Percona XtraDB Cluster (PXC) provider.
 
 ## 🚀 Quick Start
 
