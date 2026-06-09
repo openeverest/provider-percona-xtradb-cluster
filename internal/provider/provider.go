@@ -102,6 +102,16 @@ func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, erro
 	return "", nil
 }
 
+func componentConfigured(component corev1alpha1.ComponentSpec) bool {
+	return component.Replicas != nil ||
+		component.Version != "" ||
+		component.Image != "" ||
+		component.Storage != nil ||
+		component.Resources != nil ||
+		component.Config != nil ||
+		component.CustomSpec != nil
+}
+
 // ValidatePXC validates the Instance spec for PXC.
 func ValidatePXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
@@ -135,11 +145,13 @@ func SyncPXC(c *controller.Context) error {
 
 	haproxyComponent, hasHAProxy := c.Instance().Spec.Components[common.ComponentHAProxy]
 	proxySQLComponent, hasProxySQL := c.Instance().Spec.Components[common.ComponentProxySQL]
-	if hasHAProxy && hasProxySQL {
+	haproxySelected := hasHAProxy && componentConfigured(haproxyComponent)
+	proxySQLSelected := hasProxySQL && componentConfigured(proxySQLComponent)
+	if haproxySelected && proxySQLSelected {
 		return fmt.Errorf("can't enable both HAProxy and ProxySQL please only select one of them")
 	}
 
-	if hasProxySQL {
+	if proxySQLSelected {
 		proxySQLSize := int32(2)
 		if proxySQLComponent.Replicas != nil {
 			proxySQLSize = *proxySQLComponent.Replicas
@@ -156,7 +168,7 @@ func SyncPXC(c *controller.Context) error {
 		}
 	} else {
 		haproxySize := int32(2)
-		if hasHAProxy && haproxyComponent.Replicas != nil {
+		if haproxySelected && haproxyComponent.Replicas != nil {
 			haproxySize = *haproxyComponent.Replicas
 		}
 		if pxc.Spec.HAProxy == nil {

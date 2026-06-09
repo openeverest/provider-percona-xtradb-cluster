@@ -125,7 +125,7 @@ ui:
             min: 1
             int: true
             celExpressions:
-              - celExpr: "!has(spec.components.proxysql)"
+              - celExpr: "!(has(spec.components.haproxy.replicas) && has(spec.components.proxysql.replicas))"
                 message: "HAProxy and ProxySQL are mutually exclusive"
         proxysqlNodes:
           uiType: number
@@ -136,7 +136,7 @@ ui:
             min: 1
             int: true
             celExpressions:
-              - celExpr: "!has(spec.components.haproxy)"
+              - celExpr: "!(has(spec.components.haproxy.replicas) && has(spec.components.proxysql.replicas))"
                 message: "HAProxy and ProxySQL are mutually exclusive"
       componentsOrder:
         - haproxyNodes
