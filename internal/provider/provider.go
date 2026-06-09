@@ -15,6 +15,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -102,14 +103,38 @@ func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, erro
 	return "", nil
 }
 
-func componentConfigured(component corev1alpha1.ComponentSpec) bool {
-	return component.Replicas != nil ||
-		component.Version != "" ||
-		component.Image != "" ||
-		component.Storage != nil ||
-		component.Resources != nil ||
-		component.Config != nil ||
-		component.CustomSpec != nil
+type clusterTopologyConfig struct {
+	ProxyType     string `json:"proxyType,omitempty"`
+	ProxyReplicas *int32 `json:"proxyReplicas,omitempty"`
+}
+
+func proxySelection(c *controller.Context) (string, int32, error) {
+	proxyType := common.ComponentHAProxy
+	proxyReplicas := int32(2)
+
+	if c.Instance().Spec.Topology != nil && c.Instance().Spec.Topology.Config != nil && len(c.Instance().Spec.Topology.Config.Raw) > 0 {
+		cfg := clusterTopologyConfig{}
+		if err := json.Unmarshal(c.Instance().Spec.Topology.Config.Raw, &cfg); err != nil {
+			return "", 0, fmt.Errorf("decode topology config: %w", err)
+		}
+		if cfg.ProxyType != "" {
+			proxyType = cfg.ProxyType
+		}
+		if cfg.ProxyReplicas != nil {
+			proxyReplicas = *cfg.ProxyReplicas
+		}
+	}
+
+	if proxyReplicas < 1 {
+		return "", 0, fmt.Errorf("proxy replicas must be >= 1")
+	}
+
+	switch proxyType {
+	case common.ComponentHAProxy, common.ComponentProxySQL:
+		return proxyType, proxyReplicas, nil
+	default:
+		return "", 0, fmt.Errorf("unsupported proxy type %q", proxyType)
+	}
 }
 
 // ValidatePXC validates the Instance spec for PXC.
@@ -142,50 +167,39 @@ func SyncPXC(c *controller.Context) error {
 	// No need to check if engine is nil, it is guaranteed to be present by the validator
 	pxc.Spec.PXC.Size = *engine.Replicas
 
-	haproxyComponent, hasHAProxy := c.Instance().Spec.Components[common.ComponentHAProxy]
-	proxySQLComponent, hasProxySQL := c.Instance().Spec.Components[common.ComponentProxySQL]
-	haproxySelected := hasHAProxy && componentConfigured(haproxyComponent)
-	proxySQLSelected := hasProxySQL && componentConfigured(proxySQLComponent)
-	if haproxySelected && proxySQLSelected {
-		return fmt.Errorf("can't enable both HAProxy and ProxySQL please only select one of them")
+	proxyType, proxyReplicas, err := proxySelection(c)
+	if err != nil {
+		return err
 	}
 
-	if proxySQLSelected {
-		proxySQLSize := int32(2)
-		if proxySQLComponent.Replicas != nil {
-			proxySQLSize = *proxySQLComponent.Replicas
-		}
+	if proxyType == common.ComponentProxySQL {
 		pxc.Spec.HAProxy = nil
 		pxc.Spec.ProxySQL = &pxcv1.ProxySQLSpec{
 			PodSpec: pxcv1.PodSpec{
 				Enabled: true,
-				Size:    proxySQLSize,
+				Size:    proxyReplicas,
 				VolumeSpec: &pxcv1.VolumeSpec{
 					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 		}
 	} else {
-		haproxySize := int32(2)
-		if haproxySelected && haproxyComponent.Replicas != nil {
-			haproxySize = *haproxyComponent.Replicas
-		}
 		if pxc.Spec.HAProxy == nil {
 			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
 		}
 		pxc.Spec.HAProxy.Enabled = true
-		pxc.Spec.HAProxy.Size = haproxySize
+		pxc.Spec.HAProxy.Size = proxyReplicas
 		pxc.Spec.ProxySQL = nil
 	}
 
-	var proxyReplicas *int32
+	var proxyReplicasPtr *int32
 	if pxc.Spec.ProxySQLEnabled() {
-		proxyReplicas = &pxc.Spec.ProxySQL.Size
+		proxyReplicasPtr = &pxc.Spec.ProxySQL.Size
 	}
 	if pxc.Spec.HAProxyEnabled() {
-		proxyReplicas = &pxc.Spec.HAProxy.Size
+		proxyReplicasPtr = &pxc.Spec.HAProxy.Size
 	}
-	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas, proxyReplicas)
+	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas, proxyReplicasPtr)
 
 	spec, err := c.ProviderSpec()
 	if err != nil {

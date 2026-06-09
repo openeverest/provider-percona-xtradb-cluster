@@ -2,6 +2,7 @@
 # This file defines both the structural topology and its UI rendering.
 
 config:
+  configSchema: ClusterTopologyConfig
   components:
     engine:
       defaults:
@@ -115,32 +116,32 @@ ui:
       label: "Proxy"
       description: "Configure a single proxy type for the cluster."
       components:
-        haproxyNodes:
-          uiType: number
-          path: spec.components.haproxy.replicas
+        proxyType:
+          uiType: select
+          path: spec.topology.config.proxyType
           fieldParams:
-            label: "HAProxy nodes"
+            label: "Proxy type"
+            defaultValue: "haproxy"
+            options:
+              - label: "HAProxy"
+                value: "haproxy"
+              - label: "ProxySQL"
+                value: "proxysql"
+          validation:
+            required: true
+        proxyNodes:
+          uiType: number
+          path: spec.topology.config.proxyReplicas
+          fieldParams:
+            label: "Number of proxy nodes"
             defaultValue: 2
           validation:
             min: 1
             int: true
-            celExpressions:
-              - celExpr: "!(has(spec.components.haproxy.replicas) && has(spec.components.proxysql.replicas))"
-                message: "HAProxy and ProxySQL are mutually exclusive"
-        proxysqlNodes:
-          uiType: number
-          path: spec.components.proxysql.replicas
-          fieldParams:
-            label: "ProxySQL nodes"
-          validation:
-            min: 1
-            int: true
-            celExpressions:
-              - celExpr: "!(has(spec.components.haproxy.replicas) && has(spec.components.proxysql.replicas))"
-                message: "HAProxy and ProxySQL are mutually exclusive"
+            required: true
       componentsOrder:
-        - haproxyNodes
-        - proxysqlNodes
+        - proxyType
+        - proxyNodes
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced PXC settings."

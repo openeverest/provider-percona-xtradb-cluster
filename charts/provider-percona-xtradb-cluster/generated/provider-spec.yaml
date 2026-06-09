@@ -67,6 +67,14 @@ spec:
           optional: true
         proxysql:
           optional: true
+      configSchema:
+        properties:
+          proxyReplicas:
+            format: int32
+            type: integer
+          proxyType:
+            type: string
+        type: object
   uiSchema:
     cluster:
       sections:
@@ -178,32 +186,32 @@ spec:
           label: Monitoring
         proxy:
           components:
-            haproxyNodes:
+            proxyNodes:
               fieldParams:
                 defaultValue: 2
-                label: HAProxy nodes
-              path: spec.components.haproxy.replicas
+                label: Number of proxy nodes
+              path: spec.topology.config.proxyReplicas
               uiType: number
               validation:
-                celExpressions:
-                  - celExpr: '!(has(spec.components.haproxy.replicas) && has(spec.components.proxysql.replicas))'
-                    message: HAProxy and ProxySQL are mutually exclusive
                 int: true
                 min: 1
-            proxysqlNodes:
+                required: true
+            proxyType:
               fieldParams:
-                label: ProxySQL nodes
-              path: spec.components.proxysql.replicas
-              uiType: number
+                defaultValue: haproxy
+                label: Proxy type
+                options:
+                  - label: HAProxy
+                    value: haproxy
+                  - label: ProxySQL
+                    value: proxysql
+              path: spec.topology.config.proxyType
+              uiType: select
               validation:
-                celExpressions:
-                  - celExpr: '!(has(spec.components.haproxy.replicas) && has(spec.components.proxysql.replicas))'
-                    message: HAProxy and ProxySQL are mutually exclusive
-                int: true
-                min: 1
+                required: true
           componentsOrder:
-            - haproxyNodes
-            - proxysqlNodes
+            - proxyType
+            - proxyNodes
           description: Configure a single proxy type for the cluster.
           label: Proxy
         resources:
