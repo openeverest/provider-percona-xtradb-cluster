@@ -2,6 +2,11 @@
 # Do not edit manually. Run `make generate` to update.
 spec:
   componentTypes:
+    haproxy:
+      versions:
+        - default: true
+          image: percona/haproxy:2.8.18-1
+          version: 2.8.18-1
     pmm:
       versions:
         - image: percona/pmm-client:2.44.1-1
@@ -9,6 +14,11 @@ spec:
         - default: true
           image: percona/pmm-client:3.8.0
           version: 3.8.0
+    proxysql:
+      versions:
+        - default: true
+          image: percona/proxysql2:2.7.3-1.3
+          version: 2.7.3-1.3
     pxc:
       versions:
         - image: percona/percona-xtradb-cluster:5.7.34-31.51
@@ -41,8 +51,12 @@ spec:
   components:
     engine:
       type: pxc
+    haproxy:
+      type: haproxy
     monitoring:
       type: pmm
+    proxysql:
+      type: proxysql
   topologies:
     cluster:
       components:
@@ -229,54 +243,80 @@ spec:
   versions:
     - components:
         engine: 8.4.8-8.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       default: true
       name: 8.4.8
     - components:
         engine: 8.4.7-7.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.4.7
     - components:
         engine: 8.4.5-5.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.4.5
     - components:
         engine: 8.0.45-36.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.0.45
     - components:
         engine: 8.0.44-35.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.0.44
     - components:
         engine: 8.0.42-33.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.0.42
     - components:
         engine: 8.0.41-32.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.0.41
     - components:
         engine: 8.0.39-30.1
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 8.0.39
     - components:
         engine: 5.7.44-31.65
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 5.7.44
     - components:
         engine: 5.7.42-31.65
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 5.7.42
     - components:
         engine: 5.7.39-31.61
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 5.7.39
     - components:
         engine: 5.7.36-31.55
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 5.7.36
     - components:
         engine: 5.7.34-31.51
+        haproxy: 2.8.18-1
         monitoring: 3.8.0
+        proxysql: 2.7.3-1.3
       name: 5.7.34

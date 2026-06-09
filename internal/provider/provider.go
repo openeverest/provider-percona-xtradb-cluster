@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strings"
 
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
@@ -60,10 +61,45 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 			PodSpec: pxcv1.PodSpec{
 				Enabled: true,
 				Size:    2,
-				Image:   "percona/haproxy:2.8.17",
 			},
 		},
 	}
+}
+
+func imageForBundledComponent(c *controller.Context, spec *corev1alpha1.ProviderSpec, componentName string) (string, error) {
+	selectedBundle := c.Instance().Spec.Version
+	if selectedBundle == "" {
+		selectedBundle = c.Instance().Status.Version
+	}
+	if selectedBundle == "" {
+		selectedBundle = controller.GetDefaultVersionBundleName(spec)
+	}
+	if selectedBundle != "" {
+		bundle, err := controller.ResolveVersionBundle(spec, selectedBundle)
+		if err != nil {
+			return "", err
+		}
+		if componentVersion, ok := bundle.Components[componentName]; ok {
+			if image := controller.GetImageForVersion(spec, componentName, componentVersion); image != "" {
+				return image, nil
+			}
+		}
+	}
+
+	return controller.GetDefaultImageForComponent(spec, componentName), nil
+}
+
+func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, error) {
+	if pxcSpec.HAProxyEnabled() && pxcSpec.ProxySQLEnabled() {
+		return "", fmt.Errorf("can't enable both HAProxy and ProxySQL please only select one of them")
+	}
+	if pxcSpec.ProxySQLEnabled() {
+		return common.ComponentProxySQL, nil
+	}
+	if pxcSpec.HAProxyEnabled() {
+		return common.ComponentHAProxy, nil
+	}
+	return "", nil
 }
 
 // ValidatePXC validates the Instance spec for PXC.
@@ -97,6 +133,11 @@ func SyncPXC(c *controller.Context) error {
 	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas)
 	pxc.Spec.PXC.Size = *engine.Replicas
 
+	spec, err := c.ProviderSpec()
+	if err != nil {
+		return err
+	}
+
 	if engine.Config == nil {
 		switch engine.Replicas {
 		case pointer.Int32(1):
@@ -115,10 +156,6 @@ func SyncPXC(c *controller.Context) error {
 		// User explicitly specified an image override.
 		pxc.Spec.PXC.Image = engine.Image
 	} else {
-		spec, err := c.ProviderSpec()
-		if err != nil {
-			return err
-		}
 		if engine.Version != "" {
 			pxc.Spec.PXC.Image = controller.GetImageForVersion(spec, common.ComponentEngine, engine.Version)
 		}
@@ -127,6 +164,23 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 	pxc.Spec.PXC.ImagePullPolicy = corev1.PullIfNotPresent
+
+	activeProxy, err := activeProxyComponent(&pxc.Spec)
+	if err != nil {
+		return err
+	}
+	if activeProxy != "" {
+		proxyImage, err := imageForBundledComponent(c, spec, activeProxy)
+		if err != nil {
+			return err
+		}
+		switch activeProxy {
+		case common.ComponentHAProxy:
+			pxc.Spec.HAProxy.Image = proxyImage
+		case common.ComponentProxySQL:
+			pxc.Spec.ProxySQL.Image = proxyImage
+		}
+	}
 
 	usersSecretName := "everest-secrets-" + c.Name()
 
