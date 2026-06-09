@@ -19,9 +19,8 @@ make generate
 ```
 
 3. Install CRDs:
-```bash
-make install
-```
+
+    make install-crds
 
 ### Run the Provider
 
