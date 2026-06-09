@@ -427,8 +427,11 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 
 	// Adjust key names if your users secret uses different keys.
 	username := "root"
-	password := string(secret.Data["root"])
-
+	passBytes, ok := secret.Data["root"]
+	if !ok {
+		return controller.ConnectionDetails{}, fmt.Errorf("credentials secret %s missing %q key", secretName, "root")
+	}
+	password := string(passBytes)
 	host := pxc.Status.Host
 	if host == "" {
 		// Fallback service name pattern if status host is not populated yet.
