@@ -319,7 +319,7 @@ func CleanupPXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Cleaning up PXC cluster", "cluster", c.Name())
 
-	// TODO: Implemenent handling of finalizers
+	// TODO: Implement handling of finalizers
 	pxc := &pxcv1.PerconaXtraDBCluster{
 		ObjectMeta: c.ObjectMeta(c.Name()),
 	}
