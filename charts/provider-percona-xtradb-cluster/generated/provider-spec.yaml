@@ -61,7 +61,11 @@ spec:
     cluster:
       components:
         engine: {}
+        haproxy:
+          optional: true
         monitoring:
+          optional: true
+        proxysql:
           optional: true
   uiSchema:
     cluster:
@@ -172,6 +176,36 @@ spec:
               uiType: select
           description: Attach a MonitoringConfig to collect metrics.
           label: Monitoring
+        proxy:
+          components:
+            haproxyNodes:
+              fieldParams:
+                defaultValue: 2
+                label: HAProxy nodes
+              path: spec.components.haproxy.replicas
+              uiType: number
+              validation:
+                celExpressions:
+                  - celExpr: '!has(spec.components.proxysql)'
+                    message: HAProxy and ProxySQL are mutually exclusive
+                int: true
+                min: 1
+            proxysqlNodes:
+              fieldParams:
+                label: ProxySQL nodes
+              path: spec.components.proxysql.replicas
+              uiType: number
+              validation:
+                celExpressions:
+                  - celExpr: '!has(spec.components.haproxy)'
+                    message: HAProxy and ProxySQL are mutually exclusive
+                int: true
+                min: 1
+          componentsOrder:
+            - haproxyNodes
+            - proxysqlNodes
+          description: Configure a single proxy type for the cluster.
+          label: Proxy
         resources:
           components:
             nodes:
@@ -239,6 +273,7 @@ spec:
         - databaseVersion
         - resources
         - monitoring
+        - proxy
         - advanced
   versions:
     - components:

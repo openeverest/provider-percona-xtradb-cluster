@@ -133,6 +133,40 @@ func SyncPXC(c *controller.Context) error {
 	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas)
 	pxc.Spec.PXC.Size = *engine.Replicas
 
+	haproxyComponent, hasHAProxy := c.Instance().Spec.Components[common.ComponentHAProxy]
+	proxySQLComponent, hasProxySQL := c.Instance().Spec.Components[common.ComponentProxySQL]
+	if hasHAProxy && hasProxySQL {
+		return fmt.Errorf("can't enable both HAProxy and ProxySQL please only select one of them")
+	}
+
+	if hasProxySQL {
+		proxySQLSize := int32(2)
+		if proxySQLComponent.Replicas != nil {
+			proxySQLSize = *proxySQLComponent.Replicas
+		}
+		pxc.Spec.HAProxy = nil
+		pxc.Spec.ProxySQL = &pxcv1.ProxySQLSpec{
+			PodSpec: pxcv1.PodSpec{
+				Enabled: true,
+				Size:    proxySQLSize,
+				VolumeSpec: &pxcv1.VolumeSpec{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+		}
+	} else {
+		haproxySize := int32(2)
+		if hasHAProxy && haproxyComponent.Replicas != nil {
+			haproxySize = *haproxyComponent.Replicas
+		}
+		if pxc.Spec.HAProxy == nil {
+			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
+		}
+		pxc.Spec.HAProxy.Enabled = true
+		pxc.Spec.HAProxy.Size = haproxySize
+		pxc.Spec.ProxySQL = nil
+	}
+
 	spec, err := c.ProviderSpec()
 	if err != nil {
 		return err

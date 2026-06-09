@@ -6,6 +6,12 @@ config:
     engine:
       defaults:
         replicas: 3
+    haproxy:
+      optional: true
+      defaults:
+        replicas: 2
+    proxysql:
+      optional: true
     monitoring:
       optional: true
 
@@ -105,6 +111,36 @@ ui:
             label: "Monitoring endpoint"
           dataSource:
             provider: monitoringConfigs
+    proxy:
+      label: "Proxy"
+      description: "Configure a single proxy type for the cluster."
+      components:
+        haproxyNodes:
+          uiType: number
+          path: spec.components.haproxy.replicas
+          fieldParams:
+            label: "HAProxy nodes"
+            defaultValue: 2
+          validation:
+            min: 1
+            int: true
+            celExpressions:
+              - celExpr: "!has(spec.components.proxysql)"
+                message: "HAProxy and ProxySQL are mutually exclusive"
+        proxysqlNodes:
+          uiType: number
+          path: spec.components.proxysql.replicas
+          fieldParams:
+            label: "ProxySQL nodes"
+          validation:
+            min: 1
+            int: true
+            celExpressions:
+              - celExpr: "!has(spec.components.haproxy)"
+                message: "HAProxy and ProxySQL are mutually exclusive"
+      componentsOrder:
+        - haproxyNodes
+        - proxysqlNodes
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced PXC settings."
@@ -185,5 +221,6 @@ ui:
     - databaseVersion
     - resources
     - monitoring
+    - proxy
     - advanced
 
