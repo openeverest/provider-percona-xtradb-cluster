@@ -209,10 +209,10 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	if engine.Config == nil {
-		switch engine.Replicas {
-		case pointer.Int32(1):
+		switch {
+		case *engine.Replicas == 1:
 			pxc.Spec.PXC.Configuration = pxcConfigSizeSmall
-		case pointer.Int32(3):
+		case *engine.Replicas == 3:
 			pxc.Spec.PXC.Configuration = pxcConfigSizeMedium
 		default:
 			pxc.Spec.PXC.Configuration = pxcConfigSizeLarge
