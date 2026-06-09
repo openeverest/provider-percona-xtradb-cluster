@@ -60,4 +60,4 @@ Run `make generate` to regenerate all code.
    starting point).
 2. Create a `types.go` in the same directory with a Go struct for custom config.
    Reference it via `configSchema` in the topology YAML.
-3. Run `make gen` to regenerate.
+3. Run `make generate` to regenerate.
