@@ -295,7 +295,10 @@ func unsafeFlags(replicas, proxyReplicas *int32) pxcv1.UnsafeFlags {
 func StatusPXC(c *controller.Context) (controller.Status, error) {
 	pxc := &pxcv1.PerconaXtraDBCluster{}
 	if err := c.Get(pxc, c.Name()); err != nil {
-		return controller.Provisioning("Waiting for PerconaXtraDBCluster"), nil
+		if client.IgnoreNotFound(err) == nil {
+			return controller.Provisioning("Waiting for PerconaXtraDBCluster"), nil
+		}
+		return controller.Failed("Failed to get PerconaXtraDBCluster: " + err.Error()), err
 	}
 	if ds := c.GetDataSourceStatus(); ds != nil && !ds.Done {
 		return controller.Restoring(ds.Message), nil
