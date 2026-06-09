@@ -163,8 +163,10 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	// Get the engine component spec
-	engine := c.Instance().Spec.Components[common.ComponentEngine]
-	// No need to check if engine is nil, it is guaranteed to be present by the validator
+	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
+	if !ok || engine == nil || engine.Replicas == nil {
+		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
+	}
 	pxc.Spec.PXC.Size = *engine.Replicas
 
 	proxyType, proxyReplicas, err := proxySelection(c)
