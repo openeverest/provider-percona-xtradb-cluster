@@ -29,7 +29,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -164,7 +163,7 @@ func SyncPXC(c *controller.Context) error {
 
 	// Get the engine component spec
 	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok || engine == nil || engine.Replicas == nil {
+	if !ok || engine.Replicas == nil {
 		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
 	}
 	pxc.Spec.PXC.Size = *engine.Replicas
