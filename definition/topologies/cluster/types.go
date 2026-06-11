@@ -17,17 +17,6 @@
 // +k8s:openapi-gen=true
 package cluster
 
-// ProxyType identifies which proxy implementation to use for the cluster.
-// +kubebuilder:validation:Enum=haproxy;proxysql
-type ProxyType string
-
-// ClusterTopologyConfig defines topology-specific configuration.
-type ClusterTopologyConfig struct {
-	// ProxyType selects which proxy is enabled for the cluster.
-	// +kubebuilder:default=haproxy
-	ProxyType ProxyType `json:"proxyType,omitempty"`
-	// ProxyReplicas sets the number of replicas for the selected proxy.
-	// +kubebuilder:default=2
-	// +kubebuilder:validation:Minimum=1
-	ProxyReplicas *int32 `json:"proxyReplicas,omitempty"`
-}
+// ClusterTopologyConfig is intentionally empty.
+// Proxy settings are configured through spec.components.proxy.
+type ClusterTopologyConfig struct{}

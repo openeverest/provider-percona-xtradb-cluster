@@ -19,7 +19,12 @@ package common
 // These are used throughout the reconciliation code to reference
 // components by name consistently.
 const (
-	ComponentEngine   = "engine"
-	ComponentHAProxy  = "haproxy"
-	ComponentProxySQL = "proxysql"
+	ComponentEngine = "engine"
+	ComponentProxy  = "proxy"
+)
+
+// Proxy type constants supported by the provider.
+const (
+	ProxyTypeHAProxy  = "haproxy"
+	ProxyTypeProxySQL = "proxysql"
 )

@@ -13,9 +13,7 @@ name: percona-xtradb-cluster
 components:
   engine:
     type: pxc
-  haproxy:
+  proxy:
     type: haproxy
-  proxysql:
-    type: proxysql
   monitoring:
     type: pmm

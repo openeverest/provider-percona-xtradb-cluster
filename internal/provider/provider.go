@@ -15,7 +15,6 @@
 package provider
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -66,7 +65,38 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 	}
 }
 
-func imageForBundledComponent(c *controller.Context, spec *corev1alpha1.ProviderSpec, componentName string) (string, error) {
+func imageForComponentTypeVersion(spec *corev1alpha1.ProviderSpec, componentType, version string) string {
+	ct, ok := spec.ComponentTypes[componentType]
+	if !ok {
+		return ""
+	}
+	for _, v := range ct.Versions {
+		if v.Version == version {
+			return v.Image
+		}
+	}
+	return ""
+}
+
+func defaultImageForComponentType(spec *corev1alpha1.ProviderSpec, componentType string) string {
+	ct, ok := spec.ComponentTypes[componentType]
+	if !ok {
+		return ""
+	}
+	for _, v := range ct.Versions {
+		if v.Default && v.Image != "" {
+			return v.Image
+		}
+	}
+	for _, v := range ct.Versions {
+		if v.Image != "" {
+			return v.Image
+		}
+	}
+	return ""
+}
+
+func imageForBundledProxy(c *controller.Context, spec *corev1alpha1.ProviderSpec, proxyType string) (string, error) {
 	selectedBundle := c.Instance().Spec.Version
 	if selectedBundle == "" {
 		selectedBundle = c.Instance().Status.Version
@@ -79,14 +109,14 @@ func imageForBundledComponent(c *controller.Context, spec *corev1alpha1.Provider
 		if err != nil {
 			return "", err
 		}
-		if componentVersion, ok := bundle.Components[componentName]; ok {
-			if image := controller.GetImageForVersion(spec, componentName, componentVersion); image != "" {
+		if componentVersion, ok := bundle.Components[common.ComponentProxy]; ok {
+			if image := imageForComponentTypeVersion(spec, proxyType, componentVersion); image != "" {
 				return image, nil
 			}
 		}
 	}
 
-	return controller.GetDefaultImageForComponent(spec, componentName), nil
+	return defaultImageForComponentType(spec, proxyType), nil
 }
 
 func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, error) {
@@ -94,33 +124,25 @@ func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, erro
 		return "", fmt.Errorf("can't enable both HAProxy and ProxySQL please only select one of them")
 	}
 	if pxcSpec.ProxySQLEnabled() {
-		return common.ComponentProxySQL, nil
+		return common.ProxyTypeProxySQL, nil
 	}
 	if pxcSpec.HAProxyEnabled() {
-		return common.ComponentHAProxy, nil
+		return common.ProxyTypeHAProxy, nil
 	}
 	return "", nil
 }
 
-type clusterTopologyConfig struct {
-	ProxyType     string `json:"proxyType,omitempty"`
-	ProxyReplicas *int32 `json:"proxyReplicas,omitempty"`
-}
-
 func proxySelection(c *controller.Context) (string, int32, error) {
-	proxyType := common.ComponentHAProxy
+	proxyType := common.ProxyTypeHAProxy
 	proxyReplicas := int32(2)
 
-	if c.Instance().Spec.Topology != nil && c.Instance().Spec.Topology.Config != nil && len(c.Instance().Spec.Topology.Config.Raw) > 0 {
-		cfg := clusterTopologyConfig{}
-		if err := json.Unmarshal(c.Instance().Spec.Topology.Config.Raw, &cfg); err != nil {
-			return "", 0, fmt.Errorf("decode topology config: %w", err)
+	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
+	if ok {
+		if proxy.Type != "" {
+			proxyType = proxy.Type
 		}
-		if cfg.ProxyType != "" {
-			proxyType = cfg.ProxyType
-		}
-		if cfg.ProxyReplicas != nil {
-			proxyReplicas = *cfg.ProxyReplicas
+		if proxy.Replicas != nil {
+			proxyReplicas = *proxy.Replicas
 		}
 	}
 
@@ -129,7 +151,7 @@ func proxySelection(c *controller.Context) (string, int32, error) {
 	}
 
 	switch proxyType {
-	case common.ComponentHAProxy, common.ComponentProxySQL:
+	case common.ProxyTypeHAProxy, common.ProxyTypeProxySQL:
 		return proxyType, proxyReplicas, nil
 	default:
 		return "", 0, fmt.Errorf("unsupported proxy type %q", proxyType)
@@ -173,7 +195,7 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	if proxyType == common.ComponentProxySQL {
+	if proxyType == common.ProxyTypeProxySQL {
 		pxc.Spec.HAProxy = nil
 		pxc.Spec.ProxySQL = &pxcv1.ProxySQLSpec{
 			PodSpec: pxcv1.PodSpec{
@@ -239,14 +261,23 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 	if activeProxy != "" {
-		proxyImage, err := imageForBundledComponent(c, spec, activeProxy)
-		if err != nil {
-			return err
+		proxy, hasProxy := c.Instance().Spec.Components[common.ComponentProxy]
+		proxyImage := ""
+		if hasProxy && proxy.Image != "" {
+			proxyImage = proxy.Image
+		} else if hasProxy && proxy.Version != "" {
+			proxyImage = imageForComponentTypeVersion(spec, activeProxy, proxy.Version)
+		}
+		if proxyImage == "" {
+			proxyImage, err = imageForBundledProxy(c, spec, activeProxy)
+			if err != nil {
+				return err
+			}
 		}
 		switch activeProxy {
-		case common.ComponentHAProxy:
+		case common.ProxyTypeHAProxy:
 			pxc.Spec.HAProxy.Image = proxyImage
-		case common.ComponentProxySQL:
+		case common.ProxyTypeProxySQL:
 			pxc.Spec.ProxySQL.Image = proxyImage
 		}
 	}

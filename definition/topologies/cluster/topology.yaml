@@ -7,12 +7,11 @@ config:
     engine:
       defaults:
         replicas: 3
-    haproxy:
+    proxy:
       optional: true
       defaults:
+        type: haproxy
         replicas: 2
-    proxysql:
-      optional: true
     monitoring:
       optional: true
 
@@ -118,7 +117,7 @@ ui:
       components:
         proxyType:
           uiType: select
-          path: spec.topology.config.proxyType
+          path: spec.components.proxy.type
           fieldParams:
             label: "Proxy type"
             defaultValue: "haproxy"
@@ -131,7 +130,7 @@ ui:
             required: true
         proxyNodes:
           uiType: number
-          path: spec.topology.config.proxyReplicas
+          path: spec.components.proxy.replicas
           fieldParams:
             label: "Number of proxy nodes"
             defaultValue: 2
