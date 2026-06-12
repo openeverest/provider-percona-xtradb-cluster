@@ -119,19 +119,6 @@ func imageForBundledProxy(c *controller.Context, spec *corev1alpha1.ProviderSpec
 	return defaultImageForComponentType(spec, proxyType), nil
 }
 
-func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, error) {
-	if pxcSpec.HAProxyEnabled() && pxcSpec.ProxySQLEnabled() {
-		return "", fmt.Errorf("can't enable both HAProxy and ProxySQL please only select one of them")
-	}
-	if pxcSpec.ProxySQLEnabled() {
-		return common.ProxyTypeProxySQL, nil
-	}
-	if pxcSpec.HAProxyEnabled() {
-		return common.ProxyTypeHAProxy, nil
-	}
-	return "", nil
-}
-
 // ValidatePXC validates the Instance spec for PXC.
 func ValidatePXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
@@ -260,28 +247,26 @@ func SyncPXC(c *controller.Context) error {
 	}
 	pxc.Spec.PXC.ImagePullPolicy = corev1.PullIfNotPresent
 
-	activeProxy, err := activeProxyComponent(&pxc.Spec)
-	if err != nil {
-		return err
-	}
-	if activeProxy != "" {
+	if proxyType != "" {
 		proxyImage := ""
 		if proxy.Image != "" {
 			proxyImage = proxy.Image
 		} else if proxy.Version != "" {
-			proxyImage = imageForComponentTypeVersion(spec, activeProxy, proxy.Version)
+			proxyImage = imageForComponentTypeVersion(spec, proxyType, proxy.Version)
 		}
 		if proxyImage == "" {
-			proxyImage, err = imageForBundledProxy(c, spec, activeProxy)
+			proxyImage, err = imageForBundledProxy(c, spec, proxyType)
 			if err != nil {
 				return err
 			}
 		}
-		switch activeProxy {
+		switch proxyType {
 		case common.ProxyTypeHAProxy:
 			pxc.Spec.HAProxy.Image = proxyImage
 		case common.ProxyTypeProxySQL:
 			pxc.Spec.ProxySQL.Image = proxyImage
+		default:
+			return fmt.Errorf("unsupported proxy type %q", proxyType)
 		}
 	}
 
