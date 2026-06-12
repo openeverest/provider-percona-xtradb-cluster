@@ -132,36 +132,37 @@ func activeProxyComponent(pxcSpec *pxcv1.PerconaXtraDBClusterSpec) (string, erro
 	return "", nil
 }
 
-func proxySelection(c *controller.Context) (string, int32, error) {
-	proxyType := common.ProxyTypeHAProxy
-	proxyReplicas := int32(2)
-
-	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
-	if ok {
-		if proxy.Type != "" {
-			proxyType = proxy.Type
-		}
-		if proxy.Replicas != nil {
-			proxyReplicas = *proxy.Replicas
-		}
-	}
-
-	if proxyReplicas < 1 {
-		return "", 0, fmt.Errorf("proxy replicas must be >= 1")
-	}
-
-	switch proxyType {
-	case common.ProxyTypeHAProxy, common.ProxyTypeProxySQL:
-		return proxyType, proxyReplicas, nil
-	default:
-		return "", 0, fmt.Errorf("unsupported proxy type %q", proxyType)
-	}
-}
-
 // ValidatePXC validates the Instance spec for PXC.
 func ValidatePXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
 	l.Info("Validating PXC cluster", "cluster", c.Name())
+
+	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
+	if !ok || engine.Replicas == nil {
+		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
+	}
+	if *engine.Replicas < 1 {
+		return fmt.Errorf("%q replicas must be >= 1", common.ComponentEngine)
+	}
+
+	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
+	if !ok {
+		return fmt.Errorf("instance spec missing %q component", common.ComponentProxy)
+	}
+	if proxy.Type == "" {
+		return fmt.Errorf("instance spec missing %q component type", common.ComponentProxy)
+	}
+	if proxy.Replicas == nil {
+		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentProxy)
+	}
+	if *proxy.Replicas < 1 {
+		return fmt.Errorf("%q replicas must be >= 1", common.ComponentProxy)
+	}
+	switch proxy.Type {
+	case common.ProxyTypeHAProxy, common.ProxyTypeProxySQL:
+	default:
+		return fmt.Errorf("unsupported proxy type %q", proxy.Type)
+	}
 
 	return nil
 }
@@ -190,10 +191,13 @@ func SyncPXC(c *controller.Context) error {
 	}
 	pxc.Spec.PXC.Size = *engine.Replicas
 
-	proxyType, proxyReplicas, err := proxySelection(c)
-	if err != nil {
-		return err
+	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
+	if !ok || proxy.Type == "" || proxy.Replicas == nil {
+		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentProxy)
 	}
+
+	proxyType := proxy.Type
+	proxyReplicas := *proxy.Replicas
 
 	if proxyType == common.ProxyTypeProxySQL {
 		pxc.Spec.HAProxy = nil
@@ -261,11 +265,10 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 	if activeProxy != "" {
-		proxy, hasProxy := c.Instance().Spec.Components[common.ComponentProxy]
 		proxyImage := ""
-		if hasProxy && proxy.Image != "" {
+		if proxy.Image != "" {
 			proxyImage = proxy.Image
-		} else if hasProxy && proxy.Version != "" {
+		} else if proxy.Version != "" {
 			proxyImage = imageForComponentTypeVersion(spec, activeProxy, proxy.Version)
 		}
 		if proxyImage == "" {
