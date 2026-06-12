@@ -61,8 +61,7 @@ spec:
         engine: {}
         monitoring:
           optional: true
-        proxy:
-          optional: true
+        proxy: {}
       configSchema:
         type: object
   uiSchema:

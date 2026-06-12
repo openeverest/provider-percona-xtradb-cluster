@@ -8,7 +8,6 @@ config:
       defaults:
         replicas: 3
     proxy:
-      optional: true
       defaults:
         type: haproxy
         replicas: 2
@@ -223,4 +222,3 @@ ui:
     - monitoring
     - proxy
     - advanced
-
