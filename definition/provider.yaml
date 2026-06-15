@@ -1,0 +1,19 @@
+# Provider identity and component definitions.
+# This file defines the provider name and maps logical component names
+# to their component types (defined in versions.yaml).
+#
+# Component types define what software each component runs (e.g. mongod, backup).
+# Component names are the logical roles used in topologies (e.g. engine, proxy).
+
+name: percona-xtradb-cluster
+
+# Components map logical component names to their type.
+# The type must match a key in versions.yaml's componentTypes.
+# Omit 'schema' for components that have no custom configuration fields.
+components:
+  engine:
+    type: pxc
+  proxy:
+    type: haproxy
+  monitoring:
+    type: pmm
