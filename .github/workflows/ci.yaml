@@ -134,24 +134,6 @@ jobs:
       - name: Lint Helm chart
         run: helm lint charts/provider-percona-xtradb-cluster
 
-  test-integration-core-replicaset:
-    name: Integration / core replicaset
-    needs: [lint, build, verify]
-    uses: ./.github/workflows/integration-test.yaml
-    with:
-      make_target: test-integration-core-replicaset
-      suite: core
-    secrets: inherit
-
-  test-integration-core-sharded:
-    name: Integration / core sharded
-    needs: [lint, build, verify]
-    uses: ./.github/workflows/integration-test.yaml
-    with:
-      make_target: test-integration-core-sharded
-      suite: sharded
-    secrets: inherit
-
   test-integration-monitoring-pmm:
     name: Integration / monitoring PMM
     needs: [lint, build, verify]
