@@ -1,0 +1,241 @@
+---
+# E2E tests -- exercise the PXC provider through the OpenEverest UI running
+# on a k3d cluster.
+#
+# Triggers:
+#   - Manual dispatch (workflow_dispatch)
+#   - PR label "test/e2e" (on labeling or new pushes while the label is present)
+#   - Nightly schedule (02:00 UTC) on the main branch
+#
+# The pipeline:
+#   1. Creates a k3d cluster
+#   2. Builds the OpenEverest platform from the v2 branch (UI, API server,
+#      controller, operator, CLI) and deploys it via everestctl
+#   3. Builds the provider image and deploys it via the local Helm chart
+#   4. Port-forwards the Everest UI to localhost:8080
+#   5. Runs Playwright browser tests against the UI
+#
+# NOTE: Since v2 is still in development and there are no published images,
+# we build everything from source (similar to openeverest/dev-be-ci.yaml).
+# Once v2 images are published, this can be simplified to a single
+# `helm upgrade --install` of the released chart.
+name: E2E
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+    types: [labeled, synchronize]
+
+  schedule:
+    # Nightly at 02:00 UTC on the default branch.
+    - cron: "0 2 * * *"
+
+# Cancel in-progress runs for the same branch/PR when a new commit arrives.
+# On main (nightly) we let runs queue so every execution completes.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Provider image built by *this* repo.
+  IMG: provider-percona-xtradb-cluster:ci
+
+  EVEREST_NAMESPACE: everest-system
+  PROVIDER_NAMESPACE: provider-system
+
+  # Branch of openeverest/openeverest to build the platform from.
+  OPENEVEREST_BRANCH: release-2.0
+
+  # Image names produced by the openeverest build (must match its Makefile).
+  EVEREST_IMG: ghcr.io/openeverest/openeverest-dev:0.0.0
+  EVEREST_OPERATOR_IMG: ghcr.io/openeverest/openeverest-operator-dev:0.0.0
+
+  # k3d cluster name (must match dev/k3d_config.yaml metadata.name).
+  K3D_CLUSTER_NAME: provider-pxc-test
+
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    # Run on:
+    #   - manual dispatch
+    #   - nightly schedule
+    #   - PRs that carry the "test/e2e" label
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'test/e2e'))
+
+    steps:
+      # -- Checkout -------------------------------------------------------
+      - name: Checkout provider repo
+        uses: actions/checkout@v4
+
+      - name: Checkout OpenEverest (v2)
+        uses: actions/checkout@v4
+        with:
+          repository: openeverest/openeverest
+          ref: ${{ env.OPENEVEREST_BRANCH }}
+          path: _openeverest
+
+      # -- Tooling --------------------------------------------------------
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: _openeverest/ui/pnpm-lock.yaml
+
+      - name: Install Kubernetes tooling (k3d)
+        uses: ./.github/actions/setup-k8s-tools
+        with:
+          install-k3d: "true"
+
+      # -- k3d cluster ----------------------------------------------------
+      - name: Create k3d cluster
+        run: |
+          sudo modprobe br_netfilter
+          make k3d-cluster-up
+
+      # -- Build OpenEverest platform -------------------------------------
+      # These steps mirror the openeverest/dev-be-ci.yaml pipeline.
+      # Once v2 images are published this entire section can be replaced
+      # with a single `helm upgrade --install` of the released chart.
+
+      - name: Build Everest UI
+        working-directory: _openeverest
+        run: make build-ui
+
+      - name: Build Everest API server
+        working-directory: _openeverest
+        run: make build-debug
+
+      - name: Build Everest controller
+        working-directory: _openeverest
+        run: make build-controller
+
+      - name: Build Everest server Docker image
+        working-directory: _openeverest
+        run: make docker-build
+
+      - name: Import Everest server image into k3d
+        run: k3d image import -c "$K3D_CLUSTER_NAME" "$EVEREST_IMG"
+
+      - name: Build Everest operator Docker image
+        working-directory: _openeverest
+        run: make docker-build-operator
+
+      - name: Import Everest operator image into k3d
+        run: k3d image import -c "$K3D_CLUSTER_NAME" "$EVEREST_OPERATOR_IMG"
+
+      - name: Build everestctl
+        working-directory: _openeverest
+        run: make build-cli-debug
+
+      # -- Deploy OpenEverest platform ------------------------------------
+      - name: Deploy Everest platform via everestctl
+        working-directory: _openeverest
+        timeout-minutes: 10
+        run: |
+          ./bin/everestctl install -v \
+            --disable-telemetry \
+            --version=0.0.0 \
+            --version-metadata-url=https://check-dev.percona.com \
+            --skip-db-namespace \
+            --skip-wizard \
+            --helm.set server.image.repository=ghcr.io/openeverest/openeverest-dev \
+            --helm.set server.apiRequestsRateLimit=500 \
+            --helm.set server.sessionRequestsRateLimit=200 \
+            --helm.set versionMetadataURL=https://check-dev.percona.com \
+            --helm.set server.initialAdminPassword=admin \
+            --helm.set operator.init=false \
+            --helm.set operator.image=ghcr.io/openeverest/openeverest-operator-dev \
+            --helm.set olm.catalogSourceImage=ghcr.io/openeverest/openeverest-catalog-dev
+
+      - name: Wait for Everest pods to be ready
+        run: |
+          kubectl -n "$EVEREST_NAMESPACE" wait --for=condition=Available \
+            deployment --all --timeout=300s
+
+      - name: Expose Everest UI via port-forward
+        working-directory: _openeverest
+        run: make expose
+
+      # -- Build & deploy provider ----------------------------------------
+      - name: Build provider image
+        run: make docker-build
+
+      - name: Import provider image into k3d
+        run: make load-image
+
+      - name: Install provider CRDs
+        run: make install-crds
+        env:
+          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
+
+      - name: Deploy provider via Helm
+        run: make deploy-provider-ci
+
+      - name: Wait for provider pods to be ready
+        run: |
+          kubectl -n "$PROVIDER_NAMESPACE" wait --for=condition=Available \
+            deployment --all --timeout=300s
+
+      # -- Playwright -----------------------------------------------------
+      - name: Install E2E dependencies
+        working-directory: test/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: test/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: test/e2e
+        env:
+          CI: "true"
+          EVEREST_URL: http://localhost:8080
+        run: npx playwright test
+
+      # -- Artifacts ------------------------------------------------------
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            test/e2e/playwright-report/
+            test/e2e/test-results/
+          retention-days: 14
+
+      - name: Dump cluster state on failure
+        if: failure()
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -A
+          echo ""
+          echo "=== Events (last 50) ==="
+          kubectl get events -A --sort-by='.lastTimestamp' | tail -50
+          echo ""
+          echo "=== Everest logs ==="
+          kubectl -n "$EVEREST_NAMESPACE" logs deployment/everest-server --tail=100 || true
+          echo ""
+          echo "=== Provider logs ==="
+          kubectl -n "$PROVIDER_NAMESPACE" logs deployment/provider-percona-xtradb-cluster --tail=100 || true
