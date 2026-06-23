@@ -94,14 +94,6 @@ test-integration: ## Run all integration tests against K8S cluster.
 test-integration-core: ## Run core integration tests.
 	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml
 
-.PHONY: test-integration-core-replicaset
-test-integration-core-replicaset: ## Run core replicaset integration tests.
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "replicaset"
-
-.PHONY: test-integration-core-sharded
-test-integration-core-sharded: ## Run core sharded integration tests.
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "sharded"
-
 .PHONY: test-integration-monitoring-pmm
 test-integration-monitoring-pmm: ## Run PMM integration tests.
 	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-monitoring.yaml
