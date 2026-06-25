@@ -1,6 +1,6 @@
 module github.com/openeverest/provider-percona-xtradb-cluster
 
-go 1.26.2
+go 1.26
 
 require (
 	github.com/openeverest/openeverest/v2 v2.0.0-dev.1
