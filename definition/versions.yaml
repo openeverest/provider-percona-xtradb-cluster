@@ -32,6 +32,15 @@ componentTypes:
     - version: "8.4.8-8.1"
       image: percona/percona-xtradb-cluster:8.4.8-8.1
       default: true
+  backup:
+    versions:
+    - version: "2.4.29"
+      image: percona/percona-xtrabackup:2.4.29
+    - version: "8.0.35-35.1"
+      image: percona/percona-xtrabackup:8.0.35-35.1
+    - version: "8.4.0-5.1"
+      image: percona/percona-xtrabackup:8.4.0-5.1
+      default: true
   pmm:
     versions:
     - version: "2.44.1-1"
@@ -59,64 +68,77 @@ versions:
   components:
     engine: "8.4.8-8.1"
     proxy: "2.8.18-1"
+    backup: "8.4.0-5.1"
     monitoring: "3.8.0"
 - name: "8.4.7"
   components:
     engine: "8.4.7-7.1"
     proxy: "2.8.18-1"
+    backup: "8.4.0-5.1"
     monitoring: "3.8.0"
 - name: "8.4.5"
   components:
     engine: "8.4.5-5.1"
     proxy: "2.8.18-1"
+    backup: "8.4.0-5.1"
     monitoring: "3.8.0"
 - name: "8.0.45"
   components:
     engine: "8.0.45-36.1"
     proxy: "2.8.18-1"
+    backup: "8.0.35-35.1"
     monitoring: "3.8.0"
 - name: "8.0.44"
   components:
     engine: "8.0.44-35.1"
     proxy: "2.8.18-1"
+    backup: "8.0.35-35.1"
     monitoring: "3.8.0"
 - name: "8.0.42"
   components:
     engine: "8.0.42-33.1"
     proxy: "2.8.18-1"
+    backup: "8.0.35-35.1"
     monitoring: "3.8.0"
 - name: "8.0.41"
   components:
     engine: "8.0.41-32.1"
     proxy: "2.8.18-1"
+    backup: "8.0.35-35.1"
     monitoring: "3.8.0"
 - name: "8.0.39"
   components:
     engine: "8.0.39-30.1"
     proxy: "2.8.18-1"
+    backup: "8.0.35-35.1"
     monitoring: "3.8.0"
 - name: "5.7.44"
   components:
     engine: "5.7.44-31.65"
     proxy: "2.8.18-1"
+    backup: "2.4.29"
     monitoring: "3.8.0"
 - name: "5.7.42"
   components:
     engine: "5.7.42-31.65"
     proxy: "2.8.18-1"
+    backup: "2.4.29"
     monitoring: "3.8.0"
 - name: "5.7.39"
   components:
     engine: "5.7.39-31.61"
     proxy: "2.8.18-1"
+    backup: "2.4.29"
     monitoring: "3.8.0"
 - name: "5.7.36"
   components:
     engine: "5.7.36-31.55"
     proxy: "2.8.18-1"
+    backup: "2.4.29"
     monitoring: "3.8.0"
 - name: "5.7.34"
   components:
     engine: "5.7.34-31.51"
     proxy: "2.8.18-1"
+    backup: "2.4.29"
     monitoring: "3.8.0"

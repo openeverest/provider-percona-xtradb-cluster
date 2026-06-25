@@ -15,5 +15,7 @@ components:
     type: pxc
   proxy:
     type: haproxy
+  backup:
+    type: backup
   monitoring:
     type: pmm
