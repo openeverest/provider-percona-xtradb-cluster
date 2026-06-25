@@ -93,6 +93,34 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 	backupSpec := &pxcv1.BackupSpec{
 		Storages: make(map[string]*pxcv1.BackupStorageSpec, len(c.Instance().Spec.Backup.Storages)),
 	}
+	providerSpec, err := c.ProviderSpec()
+	if err != nil {
+		return err
+	}
+
+	selectedBundle := c.Instance().Spec.Version
+	if selectedBundle == "" {
+		selectedBundle = c.Instance().Status.Version
+	}
+	if selectedBundle == "" {
+		selectedBundle = controller.GetDefaultVersionBundleName(providerSpec)
+	}
+	if selectedBundle == "" {
+		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: "cannot resolve version bundle for backup image selection"}
+	}
+
+	bundle, err := controller.ResolveVersionBundle(providerSpec, selectedBundle)
+	if err != nil {
+		return err
+	}
+	backupVersion, ok := bundle.Components["backup"]
+	if !ok || backupVersion == "" {
+		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("version bundle %q must define components.backup", selectedBundle)}
+	}
+	backupSpec.Image = controller.GetImageForVersion(providerSpec, "backup", backupVersion)
+	if backupSpec.Image == "" {
+		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("backup version %q from bundle %q is not defined in componentTypes.backup", backupVersion, selectedBundle)}
+	}
 
 	pitrEnabled := 0
 	for _, storage := range c.Instance().Spec.Backup.Storages {
