@@ -1,4 +1,4 @@
-# OpeneverestPerconaPxcOperator BackupClass definition.
+# Pxc BackupClass definition.
 # This file is the source of truth for the generated BackupClass manifest.
 #
 # Fields:
@@ -18,15 +18,16 @@
 #   types.go — Go types referenced above; OpenAPI-extracted by provider-sdk generate.
 
 config:
-    openAPIV3Schema: OpeneverestPerconaPxcOperatorBackupConfig
+    openAPIV3Schema: PxcBackupConfig
 description: 'TODO: describe what this BackupClass does.'
-displayName: OpeneverestPerconaPxcOperator Backup Class
+displayName: Pxc Backup Class
 executionMode: ProviderManaged
 providerManaged:
-    limits: {}
-    pitrConfigSchema: OpeneverestPerconaPxcOperatorPITRConfig
-    supportsPITR: false
+    limits:
+      maxPITREnabledStorages: 1
+    pitrConfigSchema: PxcPITRConfig
+    supportsPITR: true
 restoreConfig:
-    openAPIV3Schema: OpeneverestPerconaPxcOperatorRestoreConfig
+    openAPIV3Schema: PxcRestoreConfig
 supportedProviders:
     - percona-xtradb-cluster

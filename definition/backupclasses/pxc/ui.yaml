@@ -1,0 +1,36 @@
+# UI rendering hints for this BackupClass.
+# Inlined verbatim under spec.uiSchema in the generated manifest; treated as
+# opaque by the runtime. The recommended shape groups fields by the modal
+# that renders them:
+#   backup  — on-demand backup modal (fields backed by config.openAPIV3Schema).
+#   pitr    — per-storage PITR sub-form (fields backed by providerManaged.pitrConfigSchema).
+#   restore — restore modal (fields backed by restoreConfig.openAPIV3Schema).
+
+backup:
+  label: Backup Configuration
+  componentsOrder: []
+  components: {}
+pitr:
+  label: PITR Configuration
+  componentsOrder:
+    - timeBetweenUploads
+    - timeoutSeconds
+  components:
+    timeBetweenUploads:
+      path: spec.backup.storages[].pitr.config.timeBetweenUploads
+      uiType: number
+      fieldParams:
+        label: Upload interval (seconds)
+      validation:
+        min: 1
+    timeoutSeconds:
+      path: spec.backup.storages[].pitr.config.timeoutSeconds
+      uiType: number
+      fieldParams:
+        label: Upload timeout (seconds)
+      validation:
+        min: 1
+restore:
+  label: Restore Configuration
+  componentsOrder: []
+  components: {}
