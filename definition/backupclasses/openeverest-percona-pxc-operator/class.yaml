@@ -1,0 +1,32 @@
+# OpeneverestPerconaPxcOperator BackupClass definition.
+# This file is the source of truth for the generated BackupClass manifest.
+#
+# Fields:
+#   displayName/description: human-readable metadata.
+#   supportedProviders: providers this class can be used with.
+#   executionMode: "ProviderManaged" (operator-native) or "Job".
+#   providerManaged.supportsPITR: advertise PITR capability to Restore validation.
+#   providerManaged.limits: caps the runtime enforces against Instance.spec.backup.
+#     maxStorages, maxPITREnabledStorages, maxSchedulesPerStorage — unset means unlimited.
+#   providerManaged.pitrConfigSchema: Go type name (in this package) describing
+#     per-storage PITR custom config. Resolved to an OpenAPI schema at generation time.
+#   config.openAPIV3Schema / restoreConfig.openAPIV3Schema: Go type names
+#     describing backup-time and restore-time custom config respectively.
+#
+# Co-located files:
+#   ui.yaml  — free-form UI rendering hints, inlined verbatim under spec.uiSchema.
+#   types.go — Go types referenced above; OpenAPI-extracted by provider-sdk generate.
+
+config:
+    openAPIV3Schema: OpeneverestPerconaPxcOperatorBackupConfig
+description: 'TODO: describe what this BackupClass does.'
+displayName: OpeneverestPerconaPxcOperator Backup Class
+executionMode: ProviderManaged
+providerManaged:
+    limits: {}
+    pitrConfigSchema: OpeneverestPerconaPxcOperatorPITRConfig
+    supportsPITR: false
+restoreConfig:
+    openAPIV3Schema: OpeneverestPerconaPxcOperatorRestoreConfig
+supportedProviders:
+    - percona-xtradb-cluster
