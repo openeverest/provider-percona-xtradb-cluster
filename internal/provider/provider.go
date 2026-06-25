@@ -416,27 +416,6 @@ func (p *PXCProvider) FieldIndexes() []controller.FieldIndex {
 	return []controller.FieldIndex{}
 }
 
-// BackupWatches implements controller.BackupWatcher. The runtime's Backup
-// reconciler watches PerconaXtraDBClusterBackup CRs as owned resources so
-// operator status changes are routed directly to the parent Backup CR via
-// owner-reference based enqueue (1:1, no Instance fan-out). SyncBackup sets
-// the controller reference from Backup -> PerconaXtraDBClusterBackup, so
-// owner-based enqueue applies to every adopted backup. Operator-emitted
-// scheduled backups are still routed through the Instance reconciler (where
-// they get mirrored into Backup CRs) until the next SyncBackup adopts them.
-func (p *PXCProvider) BackupWatches() []controller.WatchConfig {
-	return []controller.WatchConfig{
-		controller.WatchOwned(&pxcv1.PerconaXtraDBClusterBackup{}),
-	}
-}
-
-// RestoreWatches mirrors BackupWatches for PerconaXtraDBClusterRestore.
-func (p *PXCProvider) RestoreWatches() []controller.WatchConfig {
-	return []controller.WatchConfig{
-		controller.WatchOwned(&pxcv1.PerconaXtraDBClusterRestore{}),
-	}
-}
-
 // buildConnectionDetails reads the PXC Users secret and combines it with host info
 // to produce a set of well-known connection details.
 func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster) (controller.ConnectionDetails, error) {
@@ -485,7 +464,3 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 var _ controller.ProviderInterface = (*PXCProvider)(nil)
 var _ controller.WatchProvider = (*PXCProvider)(nil)
 var _ controller.FieldIndexProvider = (*PXCProvider)(nil)
-var _ controller.BackupProvider = (*PXCProvider)(nil)
-var _ controller.BackupWatcher = (*PXCProvider)(nil)
-var _ controller.RestoreWatcher = (*PXCProvider)(nil)
-var _ controller.BackupMirror = (*PXCProvider)(nil)
