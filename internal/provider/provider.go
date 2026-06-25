@@ -151,6 +151,26 @@ func ValidatePXC(c *controller.Context) error {
 		return fmt.Errorf("unsupported proxy type %q", proxy.Type)
 	}
 
+	if c.Instance().Spec.Backup != nil && c.Instance().Spec.Backup.Enabled {
+		bc, err := c.BackupClassForInstance()
+		if err != nil {
+			return err
+		}
+		if err := controller.ValidateInstanceBackupAgainstClass(c.Instance(), bc); err != nil {
+			return err
+		}
+
+		pitrEnabled := 0
+		for _, s := range c.Instance().Spec.Backup.Storages {
+			if s.PITR != nil && s.PITR.Enabled {
+				pitrEnabled++
+			}
+		}
+		if pitrEnabled > 1 {
+			return fmt.Errorf("PXC supports PITR on at most one storage")
+		}
+	}
+
 	return nil
 }
 
@@ -268,6 +288,10 @@ func SyncPXC(c *controller.Context) error {
 		default:
 			return fmt.Errorf("unsupported proxy type %q", proxyType)
 		}
+	}
+
+	if err := applyBackupSettings(c, pxc); err != nil {
+		return err
 	}
 
 	usersSecretName := "everest-secrets-" + c.Name()

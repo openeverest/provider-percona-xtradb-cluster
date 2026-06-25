@@ -1,0 +1,30 @@
+# UI rendering hints for this BackupClass.
+backup:
+  label: Backup Configuration
+  componentsOrder: []
+  components: {}
+pitr:
+  label: PITR Configuration
+  componentsOrder:
+    - timeBetweenUploads
+    - timeoutSeconds
+  components:
+    timeBetweenUploads:
+      path: spec.backup.storages[].pitr.config.timeBetweenUploads
+      uiType: number
+      fieldParams:
+        label: Upload interval (seconds)
+      validation:
+        min: 1
+    timeoutSeconds:
+      path: spec.backup.storages[].pitr.config.timeoutSeconds
+      uiType: number
+      fieldParams:
+        label: Upload timeout (seconds)
+      validation:
+        min: 1
+restore:
+  label: Restore Configuration
+  componentsOrder: []
+  components: {}
+
