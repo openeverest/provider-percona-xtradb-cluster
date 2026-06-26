@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -141,10 +142,12 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			return &controller.BackupConfigError{Reason: "StorageCredentialsError", Message: credErr.Error()}
 		}
 
+		bucket := resolveBackupBucket(bs.Spec.S3.Bucket, string(c.Instance().UID))
+
 		opStorage := &pxcv1.BackupStorageSpec{
 			Type: pxcv1.BackupStorageS3,
 			S3: &pxcv1.BackupStorageS3Spec{
-				Bucket:            bs.Spec.S3.Bucket,
+				Bucket:            bucket,
 				CredentialsSecret: bs.Spec.S3.CredentialsSecretName,
 				Region:            bs.Spec.S3.Region,
 				EndpointURL:       bs.Spec.S3.EndpointURL,
@@ -209,6 +212,14 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 
 	pxc.Spec.Backup = backupSpec
 	return nil
+}
+
+func resolveBackupBucket(storageBucket, instanceUID string) string {
+	bucket := strings.Trim(storageBucket, "/")
+	if bucket != "" && instanceUID != "" && !strings.Contains(bucket, "/") {
+		return fmt.Sprintf("%s/%s", bucket, instanceUID)
+	}
+	return bucket
 }
 
 // OperatorBackupType implements controller.BackupMirror (optional).
