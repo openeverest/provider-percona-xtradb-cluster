@@ -412,6 +412,34 @@ func (p *PXCProvider) BackupWatches() []controller.WatchConfig {
 	return []controller.WatchConfig{}
 }
 
+// hasActiveRestoreForInstance reports whether the namespace has at least one
+// non-terminal Restore for the given instance.
+func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName string) (bool, error) {
+	restoreList := &backupv1alpha1.RestoreList{}
+	if err := c.Client().List(
+		c.Context(),
+		restoreList,
+		client.InNamespace(namespace),
+	); err != nil {
+		return false, fmt.Errorf("list Restore resources for instance %q: %w", instanceName, err)
+	}
+
+	for i := range restoreList.Items {
+		r := restoreList.Items[i]
+		if r.Spec.InstanceName != instanceName || !r.DeletionTimestamp.IsZero() {
+			continue
+		}
+		switch r.Status.State {
+		case backupv1alpha1.RestoreStateSucceeded, backupv1alpha1.RestoreStateFailed:
+			continue
+		default:
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // RestoreWatches implements controller.RestoreWatcher. Register watches so operator
 // restore status changes trigger reconciliation. Use WatchOwned for resources with
 // controller references set by SyncRestore.
