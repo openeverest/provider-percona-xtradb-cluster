@@ -17,6 +17,7 @@ import (
 
 const (
 	pxcBackupDeleteDataFinalizer = "percona.com/delete-backup"
+	backupInstanceNameLabelKey   = "instanceName"
 )
 
 type pxcPITRConfig struct {
@@ -35,6 +36,17 @@ var _ controller.RestoreWatcher = (*PXCProvider)(nil)
 func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.Backup) (controller.BackupExecutionStatus, error) {
 	l := log.FromContext(c.Context())
 	l.Info("Syncing backup", "name", backup.Name)
+
+	origBackupCR := backup.DeepCopy()
+	if backup.Labels == nil {
+		backup.Labels = map[string]string{}
+	}
+	backup.Labels[backupInstanceNameLabelKey] = backup.Spec.InstanceName
+	if !reflect.DeepEqual(origBackupCR.Labels, backup.Labels) {
+		if err := c.Client().Patch(c.Context(), backup, client.MergeFrom(origBackupCR)); err != nil {
+			return controller.BackupExecutionStatus{}, fmt.Errorf("patch Backup %q labels: %w", backup.Name, err)
+		}
+	}
 
 	opRef := &corev1.TypedLocalObjectReference{
 		APIGroup: ptrTo(pxcv1.SchemeGroupVersion.Group),
