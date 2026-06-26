@@ -181,6 +181,15 @@ func SyncPXC(c *controller.Context) error {
 
 	defer l.Info("PXC cluster synced", "cluster", c.Name())
 
+	activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
+	if err != nil {
+		return fmt.Errorf("check active restores for %q: %w", c.Name(), err)
+	}
+	if activeRestore {
+		l.Info("Skipping PXC spec sync while restore is active", "cluster", c.Name())
+		return nil
+	}
+
 	meta := c.ObjectMeta(c.Name())
 	meta.Finalizers = []string{
 		"percona.com/delete-pxc-pods-in-order",
@@ -346,6 +355,15 @@ func StatusPXC(c *controller.Context) (controller.Status, error) {
 		return controller.Restoring(ds.Message), nil
 	}
 	switch pxc.Status.Status {
+	case pxcv1.AppStatePaused:
+		activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
+		if err != nil {
+			return controller.Failed("Failed to list Restore resources: " + err.Error()), err
+		}
+		if activeRestore {
+			return controller.Restoring("Restore is running"), nil
+		}
+		return controller.Provisioning("Cluster is paused"), nil
 	case pxcv1.AppStateReady:
 		details, err := buildConnectionDetails(c, pxc)
 		if err != nil {
