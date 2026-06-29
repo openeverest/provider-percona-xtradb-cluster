@@ -210,13 +210,38 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		return controller.RestoreExecutionStatus{}, fmt.Errorf("get source Backup %q: %w", restore.Spec.DataSource.Backup.BackupName, err)
 	}
 
+	if restore.Spec.DataSource.Backup.PITR != nil {
+		if sourceBackup.Status.State == backupv1alpha1.BackupStateFailed {
+			return controller.RestoreExecutionStatus{
+				State:              backupv1alpha1.RestoreStateFailed,
+				Message:            "Source Backup failed; cannot run PITR",
+				OperatorRestoreRef: opRef,
+			}, nil
+		}
+		if sourceBackup.Status.State != backupv1alpha1.BackupStateSucceeded {
+			return controller.RestoreExecutionStatus{
+				State:              backupv1alpha1.RestoreStatePending,
+				Message:            "Waiting for source Backup to complete",
+				OperatorRestoreRef: opRef,
+			}, nil
+		}
+	}
+
 	opBackupName := sourceBackup.Name
 	if sourceBackup.Status.OperatorBackupRef != nil && sourceBackup.Status.OperatorBackupRef.Name != "" {
 		opBackupName = sourceBackup.Status.OperatorBackupRef.Name
 	}
 
+	desiredPITR, pending, err := desiredOperatorPITRSpec(c, restore, opBackupName, opRef)
+	if err != nil {
+		return controller.RestoreExecutionStatus{}, err
+	}
+	if pending != nil {
+		return *pending, nil
+	}
+
 	opRestore := &pxcv1.PerconaXtraDBClusterRestore{}
-	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: restore.Name}, opRestore)
+	err = c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: restore.Name}, opRestore)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return controller.RestoreExecutionStatus{}, fmt.Errorf("get PerconaXtraDBClusterRestore %q: %w", restore.Name, err)
@@ -227,28 +252,8 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 			Spec: pxcv1.PerconaXtraDBClusterRestoreSpec{
 				PXCCluster: restore.Spec.InstanceName,
 				BackupName: opBackupName,
+				PITR:       desiredPITR,
 			},
-		}
-		if restore.Spec.DataSource.Backup.PITR != nil {
-			opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
-			if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: opBackupName}, opBackup); err != nil {
-				if apierrors.IsNotFound(err) {
-					return controller.RestoreExecutionStatus{
-						State:              backupv1alpha1.RestoreStatePending,
-						Message:            "Waiting for operator backup",
-						OperatorRestoreRef: opRef,
-					}, nil
-				}
-				return controller.RestoreExecutionStatus{}, fmt.Errorf("get operator backup %q: %w", opBackupName, err)
-			}
-
-			opRestore.Spec.PITR = &pxcv1.PITR{
-				BackupSource: &opBackup.Status,
-				Type:         string(restore.Spec.DataSource.Backup.PITR.Type),
-			}
-			if restore.Spec.DataSource.Backup.PITR.Date != nil {
-				opRestore.Spec.PITR.Date = restore.Spec.DataSource.Backup.PITR.Date.UTC().Format("2006-01-02 15:04:05")
-			}
 		}
 
 		if err := controllerutil.SetControllerReference(restore, opRestore, c.Client().Scheme()); err != nil {
@@ -266,28 +271,7 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 
 	opRestore.Spec.PXCCluster = restore.Spec.InstanceName
 	opRestore.Spec.BackupName = opBackupName
-	if restore.Spec.DataSource.Backup.PITR == nil {
-		opRestore.Spec.PITR = nil
-	} else {
-		opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
-		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: opBackupName}, opBackup); err != nil {
-			if apierrors.IsNotFound(err) {
-				return controller.RestoreExecutionStatus{
-					State:              backupv1alpha1.RestoreStatePending,
-					Message:            "Waiting for operator backup",
-					OperatorRestoreRef: opRef,
-				}, nil
-			}
-			return controller.RestoreExecutionStatus{}, fmt.Errorf("get operator backup %q: %w", opBackupName, err)
-		}
-		opRestore.Spec.PITR = &pxcv1.PITR{
-			BackupSource: &opBackup.Status,
-			Type:         string(restore.Spec.DataSource.Backup.PITR.Type),
-		}
-		if restore.Spec.DataSource.Backup.PITR.Date != nil {
-			opRestore.Spec.PITR.Date = restore.Spec.DataSource.Backup.PITR.Date.UTC().Format("2006-01-02 15:04:05")
-		}
-	}
+	opRestore.Spec.PITR = desiredPITR
 
 	origRestore := opRestore.DeepCopy()
 	if err := controllerutil.SetControllerReference(restore, opRestore, c.Client().Scheme()); err != nil {
@@ -329,6 +313,67 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	}
 
 	return out, nil
+}
+
+func desiredOperatorPITRSpec(
+	c *controller.Context,
+	restore *backupv1alpha1.Restore,
+	opBackupName string,
+	opRef *corev1.TypedLocalObjectReference,
+) (*pxcv1.PITR, *controller.RestoreExecutionStatus, error) {
+	pitr := restore.Spec.DataSource.Backup.PITR
+	if pitr == nil {
+		return nil, nil, nil
+	}
+
+	if pitr.Type == backupv1alpha1.PITRTypeDate && pitr.Date == nil {
+		return nil, &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            "Restore dataSource.backup.pitr.date is required when pitr.type is \"date\"",
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+
+	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
+	if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: opBackupName}, opBackup); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, &controller.RestoreExecutionStatus{
+				State:              backupv1alpha1.RestoreStatePending,
+				Message:            "Waiting for operator backup",
+				OperatorRestoreRef: opRef,
+			}, nil
+		}
+		return nil, nil, fmt.Errorf("get operator backup %q: %w", opBackupName, err)
+	}
+
+	if opBackup.Status.State == pxcv1.BackupFailed {
+		message := "Operator backup failed; cannot run PITR"
+		if opBackup.Status.Error != "" {
+			message = opBackup.Status.Error
+		}
+		return nil, &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            message,
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+	if opBackup.Status.State != pxcv1.BackupSucceeded {
+		return nil, &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStatePending,
+			Message:            "Waiting for operator backup to complete",
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+
+	out := &pxcv1.PITR{
+		BackupSource: &opBackup.Status,
+		Type:         string(pitr.Type),
+	}
+	if pitr.Date != nil {
+		out.Date = pitr.Date.UTC().Format("2006-01-02 15:04:05")
+	}
+
+	return out, nil, nil
 }
 
 // CleanupBackup deletes the operator backup resource. For DeletionPolicy: Retain,
