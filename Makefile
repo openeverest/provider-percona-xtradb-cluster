@@ -180,6 +180,19 @@ k3d-cluster-down: ## Delete the K8S test cluster.
 .PHONY: k3d-cluster-reset
 k3d-cluster-reset: k3d-cluster-down k3d-cluster-up ## Reset the K8S cluster for testing.
 
+##@ Tilt Development
+
+.PHONY: dev-up
+dev-up: k3d-cluster-up ## Create the k3d cluster and start the Tilt dev environment.
+	tilt up -f dev/Tiltfile
+
+.PHONY: dev-down
+dev-down: ## Stop the Tilt dev environment (keeps the cluster).
+	tilt down -f dev/Tiltfile
+
+.PHONY: dev-destroy
+dev-destroy: k3d-cluster-down ## Stop Tilt and delete the k3d cluster.
+
 ##@ Build
 
 LD_FLAGS = -X 'github.com/openeverest/provider-percona-xtradb-cluster/cmd/provider.Version=$(RELEASE_VERSION)' \
