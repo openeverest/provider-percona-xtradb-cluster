@@ -40,7 +40,7 @@ CHART_DIR ?= charts/provider-percona-xtradb-cluster
 K3D_CLUSTER_NAME ?= provider-pxc-test
 
 # PXC operator version used for CRD installation in CI
-PXC_OPERATOR_VERSION ?= 1.20.1
+PXC ?= 1.20.0
 
 .PHONY: help
 help: ## Display this help.
@@ -86,6 +86,10 @@ verify: ## Verify that generated files are up-to-date (for CI).
 
 ##@ Testing
 
+.PHONY: test-unit
+test-unit: ## Run Go unit tests.
+	go test -v -race -coverprofile=coverage.out ./...
+
 .PHONY: test-integration
 test-integration: ## Run all integration tests against K8S cluster.
 	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl.yaml
@@ -93,14 +97,6 @@ test-integration: ## Run all integration tests against K8S cluster.
 .PHONY: test-integration-core
 test-integration-core: ## Run core integration tests.
 	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml
-
-.PHONY: test-integration-core-replicaset
-test-integration-core-replicaset: ## Run core replicaset integration tests.
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "replicaset"
-
-.PHONY: test-integration-core-sharded
-test-integration-core-sharded: ## Run core sharded integration tests.
-	. ./test/vars.sh && kubectl kuttl test --config ./test/integration/kuttl-core.yaml --test "sharded"
 
 .PHONY: test-integration-monitoring-pmm
 test-integration-monitoring-pmm: ## Run PMM integration tests.

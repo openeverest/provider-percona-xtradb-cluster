@@ -1,0 +1,56 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  finalizers:
+    - everest.percona.com/provider-finalizer
+  name: inst-vyg
+  namespace: default
+spec:
+  # Component instances — versions are resolved from the .spec.version bundle.
+  components:
+    # Main database engine (required)
+    engine:
+      replicas: 3
+      resources:
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      storage:
+        size: 100Gi
+        storageClass: local-path
+    # Proxy/router (required)
+    proxy:
+      replicas: 2
+      type: haproxy
+  deletionPolicy: Cascade
+
+  # Provider identifier
+  provider: percona-xtradb-cluster
+
+  # Topology configuration
+  topology:
+    type: cluster
+
+  # High-level version bundle — selects a curated, pre-validated set of
+  # component versions. Omit this field to use the provider's default bundle.
+  # Individual component version overrides still take precedence.
+  version: 8.4.8
+
+
+#status:
+#  conditions:
+#    - lastTransitionTime: "2026-06-23T13:17:24Z"
+#      message: Connection details are available in Secret inst-vyg-conn
+#      observedGeneration: 1
+#      reason: Available
+#      status: "True"
+#      type: ConnectionDetailsReady
+#  connectionSecretRef:
+#    name: inst-vyg-conn
+#  phase: Ready
+#  version: 8.4.8
+
+
+
+
+
