@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -53,12 +54,21 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		Kind:     "PerconaXtraDBClusterBackup",
 		Name:     backup.Name,
 	}
+	managedByRuntime := strings.TrimSpace(backup.Spec.ScheduleName) == ""
 
 	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
 	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Name}, opBackup)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBClusterBackup %q: %w", backup.Name, err)
+		}
+
+		if !managedByRuntime {
+			return controller.BackupExecutionStatus{
+				State:             backupv1alpha1.BackupStatePending,
+				Message:           "Waiting for operator scheduled backup",
+				OperatorBackupRef: opRef,
+			}, nil
 		}
 
 		pxc := &pxcv1.PerconaXtraDBCluster{}
@@ -114,24 +124,26 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		}
 	}
 
-	origBackup := opBackup.DeepCopy()
-	if backup.Spec.InstanceName != opBackup.Spec.PXCCluster || backup.Spec.StorageName != opBackup.Spec.StorageName {
-		opBackup.Spec.PXCCluster = backup.Spec.InstanceName
-		opBackup.Spec.StorageName = backup.Spec.StorageName
-	}
-	if c.ShouldRetainBackupData(backup) {
-		controllerutil.RemoveFinalizer(opBackup, pxcBackupDeleteDataFinalizer)
-	} else {
-		controllerutil.AddFinalizer(opBackup, pxcBackupDeleteDataFinalizer)
-	}
-	if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
-		return controller.BackupExecutionStatus{}, fmt.Errorf("set backup controller reference: %w", err)
-	}
-	if !reflect.DeepEqual(origBackup.Spec, opBackup.Spec) ||
-		!reflect.DeepEqual(origBackup.Finalizers, opBackup.Finalizers) ||
-		!reflect.DeepEqual(origBackup.OwnerReferences, opBackup.OwnerReferences) {
-		if err := c.Client().Update(c.Context(), opBackup); err != nil {
-			return controller.BackupExecutionStatus{}, fmt.Errorf("update PerconaXtraDBClusterBackup %q: %w", backup.Name, err)
+	if managedByRuntime {
+		origBackup := opBackup.DeepCopy()
+		if backup.Spec.InstanceName != opBackup.Spec.PXCCluster || backup.Spec.StorageName != opBackup.Spec.StorageName {
+			opBackup.Spec.PXCCluster = backup.Spec.InstanceName
+			opBackup.Spec.StorageName = backup.Spec.StorageName
+		}
+		if c.ShouldRetainBackupData(backup) {
+			controllerutil.RemoveFinalizer(opBackup, pxcBackupDeleteDataFinalizer)
+		} else {
+			controllerutil.AddFinalizer(opBackup, pxcBackupDeleteDataFinalizer)
+		}
+		if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
+			return controller.BackupExecutionStatus{}, fmt.Errorf("set backup controller reference: %w", err)
+		}
+		if !reflect.DeepEqual(origBackup.Spec, opBackup.Spec) ||
+			!reflect.DeepEqual(origBackup.Finalizers, opBackup.Finalizers) ||
+			!reflect.DeepEqual(origBackup.OwnerReferences, opBackup.OwnerReferences) {
+			if err := c.Client().Update(c.Context(), opBackup); err != nil {
+				return controller.BackupExecutionStatus{}, fmt.Errorf("update PerconaXtraDBClusterBackup %q: %w", backup.Name, err)
+			}
 		}
 	}
 

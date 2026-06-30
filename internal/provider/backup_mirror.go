@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +23,14 @@ import (
 // Compile-time interface checks.
 var _ controller.BackupMirror = (*PXCProvider)(nil)
 
+const (
+	labelPerconaBackupType     = "percona.com/backup-type"
+	labelPerconaBackupAncestor = "percona.com/backup-ancestor"
+	legacyLabelBackupType      = "type"
+	legacyLabelBackupAncestor  = "ancestor"
+	backupTypeCron             = "cron"
+)
+
 // Mirror implements controller.BackupMirror (optional). The runtime invokes
 // Mirror() for operator backup events. Return a Backup CR to create it
 // idempotently, or nil to skip (on-demand backups, missing Instance, or backups
@@ -31,7 +41,12 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 		return nil, fmt.Errorf("unexpected operator backup type %T", obj)
 	}
 
-	if opBackup.SchedulerName == "" || !opBackup.DeletionTimestamp.IsZero() {
+	if !opBackup.DeletionTimestamp.IsZero() {
+		return nil, nil
+	}
+
+	scheduleName, isScheduled := scheduledBackupName(opBackup)
+	if !isScheduled {
 		return nil, nil
 	}
 
@@ -47,6 +62,9 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get instance %q: %w", opBackup.Spec.PXCCluster, err)
+	}
+	if scheduleName == "" {
+		scheduleName = scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, backupAncestorLabel(opBackup.Labels))
 	}
 	if instance.Spec.Provider != "percona-xtradb-cluster" || instance.Spec.Backup == nil || instance.Spec.Backup.ClassRef.Name == "" {
 		return nil, nil
@@ -69,9 +87,54 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 			InstanceName:    opBackup.Spec.PXCCluster,
 			BackupClassName: instance.Spec.Backup.ClassRef.Name,
 			StorageName:     storageName,
-			ScheduleName:    opBackup.SchedulerName,
+			ScheduleName:    scheduleName,
 		},
 	}, nil
+}
+
+func scheduledBackupName(opBackup *pxcv1.PerconaXtraDBClusterBackup) (string, bool) {
+	if name := strings.TrimSpace(opBackup.SchedulerName); name != "" {
+		return name, true
+	}
+	if !isCronBackup(opBackup.Labels) {
+		return "", false
+	}
+	return scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, backupAncestorLabel(opBackup.Labels)), true
+}
+
+func isCronBackup(labels map[string]string) bool {
+	typeLabel := strings.ToLower(strings.TrimSpace(labels[labelPerconaBackupType]))
+	if typeLabel == "" {
+		typeLabel = strings.ToLower(strings.TrimSpace(labels[legacyLabelBackupType]))
+	}
+	return typeLabel == backupTypeCron
+}
+
+func backupAncestorLabel(labels map[string]string) string {
+	ancestor := strings.TrimSpace(labels[labelPerconaBackupAncestor])
+	if ancestor == "" {
+		ancestor = strings.TrimSpace(labels[legacyLabelBackupAncestor])
+	}
+	return ancestor
+}
+
+func scheduleNameFromAncestor(namespace, clusterName, ancestor string) string {
+	if ancestor == "" {
+		return ""
+	}
+	prefix := scheduledBackupPrefix(namespace, clusterName) + "-"
+	if strings.HasPrefix(ancestor, prefix) {
+		return strings.TrimPrefix(ancestor, prefix)
+	}
+	return ancestor
+}
+
+func scheduledBackupPrefix(namespace, clusterName string) string {
+	if namespace == "" || clusterName == "" {
+		return ""
+	}
+	h := sha1.Sum([]byte(namespace + "-" + clusterName))
+	return hex.EncodeToString(h[:])[:5]
 }
 
 func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster) error {
