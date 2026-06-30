@@ -10,6 +10,7 @@ import (
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -114,13 +115,26 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 	if err != nil {
 		return err
 	}
-	backupVersion, ok := bundle.Components["backup"]
-	if !ok || backupVersion == "" {
-		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("version bundle %q must define components.backup", selectedBundle)}
-	}
-	backupSpec.Image = controller.GetImageForVersion(providerSpec, "backup", backupVersion)
-	if backupSpec.Image == "" {
-		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("backup version %q from bundle %q is not defined in componentTypes.backup", backupVersion, selectedBundle)}
+	backupVersion, hasBackupComponent := bundle.Components["backup"]
+	if hasBackupComponent && backupVersion != "" {
+		backupSpec.Image = controller.GetImageForVersion(providerSpec, "backup", backupVersion)
+		if backupSpec.Image == "" {
+			return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("backup version %q from bundle %q is not defined in componentTypes.backup", backupVersion, selectedBundle)}
+		}
+	} else {
+		// Keep compatibility with older bundles that did not include components.backup.
+		backupSpec.Image = defaultImageForComponentType(providerSpec, "backup")
+		if backupSpec.Image == "" {
+			engineVersion := bundle.Components["engine"]
+			fallbackImage, fallbackErr := definition.BackupImageForEngineVersion(engineVersion)
+			if fallbackErr != nil {
+				return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fallbackErr.Error()}
+			}
+			backupSpec.Image = fallbackImage
+		}
+		if backupSpec.Image == "" {
+			return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("version bundle %q must define components.backup or provider must define a default backup image", selectedBundle)}
+		}
 	}
 
 	pitrEnabled := 0
