@@ -168,6 +168,7 @@ spec:
               dataSource:
                 provider: monitoringConfigs
               fieldParams:
+                displayEmpty: true
                 label: Monitoring endpoint
               path: spec.components.monitoring.customSpec.monitoringConfigName
               uiType: select
