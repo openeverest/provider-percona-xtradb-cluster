@@ -13,6 +13,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
+	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,9 +24,7 @@ import (
 var _ controller.BackupMirror = (*PXCProvider)(nil)
 
 const (
-	labelPerconaBackupType     = "percona.com/backup-type"
-	labelPerconaBackupAncestor = "percona.com/backup-ancestor"
-	backupTypeCron             = "cron"
+	backupTypeCron = "cron"
 )
 
 // Mirror implements controller.BackupMirror (optional). The runtime invokes
@@ -61,7 +60,7 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 		return nil, fmt.Errorf("get instance %q: %w", pxcBackup.Spec.PXCCluster, err)
 	}
 	if scheduleName == "" {
-		scheduleName = scheduleNameFromAncestor(pxcBackup.Namespace, pxcBackup.Spec.PXCCluster, pxcBackup.Labels[labelPerconaBackupAncestor])
+		scheduleName = scheduleNameFromAncestor(pxcBackup.Namespace, pxcBackup.Spec.PXCCluster, pxcBackup.Labels[naming.LabelPerconaBackupAncestorName])
 	}
 	if instance.Spec.Provider != "percona-xtradb-cluster" || instance.Spec.Backup == nil || instance.Spec.Backup.ClassRef.Name == "" {
 		return nil, nil
@@ -99,10 +98,10 @@ func scheduledBackupName(opBackup *pxcv1.PerconaXtraDBClusterBackup) (string, bo
 	if name := strings.TrimSpace(opBackup.SchedulerName); name != "" {
 		return name, true
 	}
-	if opBackup.Labels[labelPerconaBackupType] != backupTypeCron {
+	if opBackup.Labels[naming.LabelPerconaBackupType] != backupTypeCron {
 		return "", false
 	}
-	return scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, opBackup.Labels[labelPerconaBackupAncestor]), true
+	return scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, opBackup.Labels[naming.LabelPerconaBackupAncestorName]), true
 }
 
 func scheduleNameFromAncestor(namespace, clusterName, ancestor string) string {

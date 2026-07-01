@@ -6,6 +6,7 @@ import (
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
+	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -37,8 +38,8 @@ func TestMirrorScheduledBackupByLabels(t *testing.T) {
 			Namespace: "my-special-place",
 			UID:       "11111111-1111-1111-1111-111111111111",
 			Labels: map[string]string{
-				labelPerconaBackupType:     backupTypeCron,
-				labelPerconaBackupAncestor: ancestor,
+				naming.LabelPerconaBackupType:         backupTypeCron,
+				naming.LabelPerconaBackupAncestorName: ancestor,
 			},
 		},
 		Spec: pxcv1.PXCBackupSpec{
