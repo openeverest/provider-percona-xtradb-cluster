@@ -108,6 +108,7 @@ ui:
           path: spec.components.monitoring.customSpec.monitoringConfigName
           fieldParams:
             label: "Monitoring endpoint"
+            displayEmpty: true
           dataSource:
             provider: monitoringConfigs
     proxy:

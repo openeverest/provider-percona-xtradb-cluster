@@ -15,6 +15,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -29,7 +30,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // defaultSpec returns the default PerconaXtraDBClusterSpec for new instances.
@@ -320,6 +323,10 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 
+	if err := applyMonitoringSettings(c, pxc, spec); err != nil {
+		return err
+	}
+
 	if err := applyBackupSettings(c, pxc); err != nil {
 		return err
 	}
@@ -447,6 +454,38 @@ func NewPXCProviderInterface() *PXCProvider {
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes
 			controller.WatchOwned(&pxcv1.PerconaXtraDBCluster{}),
+			controller.WatchExternal(
+				&monitoringv1alpha1.MonitoringConfig{},
+				handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+					if p.client == nil {
+						return nil
+					}
+
+					mc, ok := obj.(*monitoringv1alpha1.MonitoringConfig)
+					if !ok {
+						return nil
+					}
+
+					instances := &corev1alpha1.InstanceList{}
+					if err := p.client.List(ctx, instances,
+						client.InNamespace(mc.Namespace),
+						client.MatchingFields{monitoringConfigRefFieldPath: mc.Name},
+					); err != nil {
+						return nil
+					}
+
+					requests := make([]reconcile.Request, 0, len(instances.Items))
+					for i := range instances.Items {
+						instance := instances.Items[i]
+						if instance.Spec.Provider != p.Name() {
+							continue
+						}
+						requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&instance)})
+					}
+					return requests
+				}),
+				controller.ResourceVersionChangedPredicate,
+			),
 		},
 	}
 
@@ -476,7 +515,30 @@ func (p *PXCProvider) Cleanup(c *controller.Context) error {
 // FieldIndexes implements controller.FieldIndexProvider.
 // It registers indexes used by watchers.
 func (p *PXCProvider) FieldIndexes() []controller.FieldIndex {
-	return []controller.FieldIndex{}
+	return []controller.FieldIndex{
+		{
+			Object:    &corev1alpha1.Instance{},
+			FieldPath: monitoringConfigRefFieldPath,
+			Extractor: func(obj client.Object) []string {
+				instance, ok := obj.(*corev1alpha1.Instance)
+				if !ok {
+					return nil
+				}
+
+				monitoringComponent, ok := instance.Spec.Components[common.ComponentMonitoring]
+				if !ok {
+					return nil
+				}
+
+				monitoringConfigName, err := monitoringConfigNameFromComponent(monitoringComponent)
+				if err != nil || monitoringConfigName == "" {
+					return nil
+				}
+
+				return []string{monitoringConfigName}
+			},
+		},
+	}
 }
 
 // buildConnectionDetails reads the PXC Users secret and combines it with host info
