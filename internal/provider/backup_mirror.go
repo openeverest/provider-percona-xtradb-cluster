@@ -36,43 +36,43 @@ const (
 // idempotently, or nil to skip (on-demand backups, missing Instance, or backups
 // when Instance has no backup configuration).
 func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Object) (*backupv1alpha1.Backup, error) {
-	opBackup, ok := obj.(*pxcv1.PerconaXtraDBClusterBackup)
+	pxcBackup, ok := obj.(*pxcv1.PerconaXtraDBClusterBackup)
 	if !ok {
 		return nil, fmt.Errorf("unexpected operator backup type %T", obj)
 	}
 
-	if !opBackup.DeletionTimestamp.IsZero() {
+	if !pxcBackup.DeletionTimestamp.IsZero() {
 		return nil, nil
 	}
 
-	scheduleName, isScheduled := scheduledBackupName(opBackup)
+	scheduleName, isScheduled := scheduledBackupName(pxcBackup)
 	if !isScheduled {
 		return nil, nil
 	}
 
-	for _, owner := range opBackup.OwnerReferences {
+	for _, owner := range pxcBackup.OwnerReferences {
 		if owner.Controller != nil && *owner.Controller && owner.APIVersion == backupv1alpha1.GroupVersion.String() && owner.Kind == "Backup" {
 			return nil, nil
 		}
 	}
 
 	instance := &corev1alpha1.Instance{}
-	if err := c.Get(ctx, client.ObjectKey{Namespace: opBackup.Namespace, Name: opBackup.Spec.PXCCluster}, instance); err != nil {
+	if err := c.Get(ctx, client.ObjectKey{Namespace: pxcBackup.Namespace, Name: pxcBackup.Spec.PXCCluster}, instance); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get instance %q: %w", opBackup.Spec.PXCCluster, err)
+		return nil, fmt.Errorf("get instance %q: %w", pxcBackup.Spec.PXCCluster, err)
 	}
 	if scheduleName == "" {
-		scheduleName = scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, backupAncestorLabel(opBackup.Labels))
+		scheduleName = scheduleNameFromAncestor(pxcBackup.Namespace, pxcBackup.Spec.PXCCluster, backupAncestorLabel(pxcBackup.Labels))
 	}
 	if instance.Spec.Provider != "percona-xtradb-cluster" || instance.Spec.Backup == nil || instance.Spec.Backup.ClassRef.Name == "" {
 		return nil, nil
 	}
 
-	storageName := opBackup.Status.StorageName
+	storageName := pxcBackup.Status.StorageName
 	if storageName == "" {
-		storageName = opBackup.Spec.StorageName
+		storageName = pxcBackup.Spec.StorageName
 	}
 	if storageName == "" {
 		return nil, nil
@@ -80,11 +80,11 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 
 	return &backupv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      opBackup.Name,
-			Namespace: opBackup.Namespace,
+			Name:      pxcBackup.Name,
+			Namespace: pxcBackup.Namespace,
 		},
 		Spec: backupv1alpha1.BackupSpec{
-			InstanceName:    opBackup.Spec.PXCCluster,
+			InstanceName:    pxcBackup.Spec.PXCCluster,
 			BackupClassName: instance.Spec.Backup.ClassRef.Name,
 			StorageName:     storageName,
 			ScheduleName:    scheduleName,
