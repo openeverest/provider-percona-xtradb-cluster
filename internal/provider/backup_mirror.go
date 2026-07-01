@@ -95,7 +95,7 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 }
 
 func scheduledBackupName(opBackup *pxcv1.PerconaXtraDBClusterBackup) (string, bool) {
-	if name := strings.TrimSpace(opBackup.SchedulerName); name != "" {
+	if name := opBackup.SchedulerName; name != "" {
 		return name, true
 	}
 	if opBackup.Labels[naming.LabelPerconaBackupType] != backupTypeCron {

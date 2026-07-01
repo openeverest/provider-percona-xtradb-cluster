@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -57,7 +56,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		Kind:     "PerconaXtraDBClusterBackup",
 		Name:     backup.Name,
 	}
-	managedByRuntime := strings.TrimSpace(backup.Spec.ScheduleName) == ""
+	managedByRuntime := backup.Spec.ScheduleName == ""
 
 	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
 	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Name}, opBackup)
