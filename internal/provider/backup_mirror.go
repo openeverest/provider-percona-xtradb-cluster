@@ -25,8 +25,6 @@ var _ controller.BackupMirror = (*PXCProvider)(nil)
 const (
 	labelPerconaBackupType     = "percona.com/backup-type"
 	labelPerconaBackupAncestor = "percona.com/backup-ancestor"
-	legacyLabelBackupType      = "type"
-	legacyLabelBackupAncestor  = "ancestor"
 	backupTypeCron             = "cron"
 )
 
@@ -63,7 +61,7 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 		return nil, fmt.Errorf("get instance %q: %w", pxcBackup.Spec.PXCCluster, err)
 	}
 	if scheduleName == "" {
-		scheduleName = scheduleNameFromAncestor(pxcBackup.Namespace, pxcBackup.Spec.PXCCluster, backupAncestorLabel(pxcBackup.Labels))
+		scheduleName = scheduleNameFromAncestor(pxcBackup.Namespace, pxcBackup.Spec.PXCCluster, pxcBackup.Labels[labelPerconaBackupAncestor])
 	}
 	if instance.Spec.Provider != "percona-xtradb-cluster" || instance.Spec.Backup == nil || instance.Spec.Backup.ClassRef.Name == "" {
 		return nil, nil
@@ -101,26 +99,10 @@ func scheduledBackupName(opBackup *pxcv1.PerconaXtraDBClusterBackup) (string, bo
 	if name := strings.TrimSpace(opBackup.SchedulerName); name != "" {
 		return name, true
 	}
-	if !isCronBackup(opBackup.Labels) {
+	if opBackup.Labels[labelPerconaBackupType] != backupTypeCron {
 		return "", false
 	}
-	return scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, backupAncestorLabel(opBackup.Labels)), true
-}
-
-func isCronBackup(labels map[string]string) bool {
-	typeLabel := strings.ToLower(strings.TrimSpace(labels[labelPerconaBackupType]))
-	if typeLabel == "" {
-		typeLabel = strings.ToLower(strings.TrimSpace(labels[legacyLabelBackupType]))
-	}
-	return typeLabel == backupTypeCron
-}
-
-func backupAncestorLabel(labels map[string]string) string {
-	ancestor := strings.TrimSpace(labels[labelPerconaBackupAncestor])
-	if ancestor == "" {
-		ancestor = strings.TrimSpace(labels[legacyLabelBackupAncestor])
-	}
-	return ancestor
+	return scheduleNameFromAncestor(opBackup.Namespace, opBackup.Spec.PXCCluster, opBackup.Labels[labelPerconaBackupAncestor]), true
 }
 
 func scheduleNameFromAncestor(namespace, clusterName, ancestor string) string {
