@@ -100,11 +100,10 @@ func monitoringConfigNameFromComponent(component corev1alpha1.ComponentSpec) (st
 		return "", nil
 	}
 
-	return strings.TrimSpace(*cfg.MonitoringConfigName), nil
+	return *cfg.MonitoringConfigName, nil
 }
 
 func pmmServerHostFromURL(rawURL string) (string, error) {
-	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return "", fmt.Errorf("url is empty")
 	}
@@ -177,7 +176,6 @@ func syncPMMCredentials(c *controller.Context, credentialsSecretName, pmmImage s
 }
 
 func isPMM3Image(image string) bool {
-	image = strings.TrimSpace(image)
 	if image == "" {
 		return false
 	}
