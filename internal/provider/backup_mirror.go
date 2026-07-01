@@ -12,7 +12,6 @@ import (
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
-	"github.com/openeverest/provider-percona-xtradb-cluster/definition"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -189,11 +188,7 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 		backupSpec.Image = defaultImageForComponentType(providerSpec, "backup")
 		if backupSpec.Image == "" {
 			engineVersion := bundle.Components["engine"]
-			fallbackImage, fallbackErr := definition.BackupImageForEngineVersion(engineVersion)
-			if fallbackErr != nil {
-				return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fallbackErr.Error()}
-			}
-			backupSpec.Image = fallbackImage
+			backupSpec.Image = backupImageForEngineVersion(providerSpec, engineVersion)
 		}
 		if backupSpec.Image == "" {
 			return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: fmt.Sprintf("version bundle %q must define components.backup or provider must define a default backup image", selectedBundle)}

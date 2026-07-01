@@ -96,6 +96,27 @@ func defaultImageForComponentType(spec *corev1alpha1.ProviderSpec, componentType
 	return ""
 }
 
+func backupImageForEngineVersion(spec *corev1alpha1.ProviderSpec, engineVersion string) string {
+	if spec == nil || engineVersion == "" {
+		return ""
+	}
+
+	for _, bundle := range spec.Versions {
+		if bundle.Components[common.ComponentEngine] != engineVersion {
+			continue
+		}
+		backupVersion := bundle.Components[common.ComponentBackup]
+		if backupVersion == "" {
+			continue
+		}
+		if image := controller.GetImageForVersion(spec, common.ComponentBackup, backupVersion); image != "" {
+			return image
+		}
+	}
+
+	return defaultImageForComponentType(spec, common.ComponentBackup)
+}
+
 func imageForBundledProxy(c *controller.Context, spec *corev1alpha1.ProviderSpec, proxyType string) (string, error) {
 	selectedBundle := c.Instance().Spec.Version
 	if selectedBundle == "" {

@@ -21,6 +21,7 @@ package common
 const (
 	ComponentEngine = "engine"
 	ComponentProxy  = "proxy"
+	ComponentBackup = "backup"
 )
 
 // Proxy type constants supported by the provider.
