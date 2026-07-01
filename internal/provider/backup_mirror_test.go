@@ -35,6 +35,7 @@ func TestMirrorScheduledBackupByLabels(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cron-inst-qaf-bs-msp-1-2026630141710-3lll6",
 			Namespace: "my-special-place",
+			UID:       "11111111-1111-1111-1111-111111111111",
 			Labels: map[string]string{
 				labelPerconaBackupType:     backupTypeCron,
 				labelPerconaBackupAncestor: ancestor,
@@ -58,6 +59,13 @@ func TestMirrorScheduledBackupByLabels(t *testing.T) {
 	}
 	if mirror.Spec.StorageName != "bs-msp-1" {
 		t.Fatalf("unexpected storageName %q", mirror.Spec.StorageName)
+	}
+	if len(mirror.OwnerReferences) != 1 {
+		t.Fatalf("expected 1 owner reference, got %d", len(mirror.OwnerReferences))
+	}
+	owner := mirror.OwnerReferences[0]
+	if owner.APIVersion != pxcv1.SchemeGroupVersion.String() || owner.Kind != "PerconaXtraDBClusterBackup" || owner.Name != opBackup.Name || owner.UID != opBackup.UID {
+		t.Fatalf("unexpected owner reference: %#v", owner)
 	}
 }
 

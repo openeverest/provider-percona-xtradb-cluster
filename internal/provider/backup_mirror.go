@@ -81,6 +81,12 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pxcBackup.Name,
 			Namespace: pxcBackup.Namespace,
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: pxcv1.SchemeGroupVersion.String(),
+				Kind:       "PerconaXtraDBClusterBackup",
+				Name:       pxcBackup.Name,
+				UID:        pxcBackup.UID,
+			}},
 		},
 		Spec: backupv1alpha1.BackupSpec{
 			InstanceName:    pxcBackup.Spec.PXCCluster,
