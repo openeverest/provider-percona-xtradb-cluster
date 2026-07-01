@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -13,7 +14,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -461,12 +464,15 @@ func (p *PXCProvider) CleanupRestore(c *controller.Context, restore *backupv1alp
 // backup status changes trigger reconciliation. Use WatchOwned for resources with
 // controller references set by SyncBackup.
 func (p *PXCProvider) BackupWatches() []controller.WatchConfig {
-	// TODO: Register watches for your operator backup resource.
-	// Example:
-	//   return []controller.WatchConfig{
-	//       controller.WatchOwned(&operatorv1.MyDatabaseBackup{}),
-	//   }
-	return []controller.WatchConfig{}
+	return []controller.WatchConfig{
+		controller.WatchExternal(
+			&pxcv1.PerconaXtraDBClusterBackup{},
+			handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+				return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(obj)}}
+			}),
+			controller.ResourceVersionChangedPredicate,
+		),
+	}
 }
 
 // hasActiveRestoreForInstance reports whether the namespace has at least one
@@ -501,12 +507,15 @@ func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName 
 // restore status changes trigger reconciliation. Use WatchOwned for resources with
 // controller references set by SyncRestore.
 func (p *PXCProvider) RestoreWatches() []controller.WatchConfig {
-	// TODO: Register watches for your operator restore resource.
-	// Example:
-	//   return []controller.WatchConfig{
-	//       controller.WatchOwned(&operatorv1.MyDatabaseRestore{}),
-	//   }
-	return []controller.WatchConfig{}
+	return []controller.WatchConfig{
+		controller.WatchExternal(
+			&pxcv1.PerconaXtraDBClusterRestore{},
+			handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []reconcile.Request {
+				return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(obj)}}
+			}),
+			controller.ResourceVersionChangedPredicate,
+		),
+	}
 }
 
 func ptrTo[T any](v T) *T {
