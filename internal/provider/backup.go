@@ -128,9 +128,18 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 
 	if managedByRuntime {
 		origBackup := opBackup.DeepCopy()
-		if backup.Spec.InstanceName != opBackup.Spec.PXCCluster || backup.Spec.StorageName != opBackup.Spec.StorageName {
-			opBackup.Spec.PXCCluster = backup.Spec.InstanceName
-			opBackup.Spec.StorageName = backup.Spec.StorageName
+		if immutableChangeMsg := immutableBackupSpecChangeMessage(opBackup, backup); immutableChangeMsg != "" {
+			immutableErr := fmt.Errorf("cannot change immutable backup spec")
+			l.Error(
+				immutableErr,
+				"failed to reconcile backup CR",
+				"backup", backup.Name,
+				"requestedInstanceName", backup.Spec.InstanceName,
+				"existingInstanceName", opBackup.Spec.PXCCluster,
+				"requestedStorageName", backup.Spec.StorageName,
+				"existingStorageName", opBackup.Spec.StorageName,
+				"reason", immutableChangeMsg,
+			)
 		}
 		if c.ShouldRetainBackupData(backup) {
 			controllerutil.RemoveFinalizer(opBackup, pxcBackupDeleteDataFinalizer)
@@ -519,4 +528,23 @@ func (p *PXCProvider) RestoreWatches() []controller.WatchConfig {
 
 func ptrTo[T any](v T) *T {
 	return &v
+}
+
+func immutableBackupSpecChangeMessage(opBackup *pxcv1.PerconaXtraDBClusterBackup, backup *backupv1alpha1.Backup) string {
+	if backup.Spec.InstanceName != opBackup.Spec.PXCCluster {
+		return fmt.Sprintf(
+			"cannot change backup spec.instanceName after creation (requested %q, existing %q)",
+			backup.Spec.InstanceName,
+			opBackup.Spec.PXCCluster,
+		)
+	}
+	if backup.Spec.StorageName != opBackup.Spec.StorageName {
+		return fmt.Sprintf(
+			"cannot change backup spec.storageName after creation (requested %q, existing %q)",
+			backup.Spec.StorageName,
+			opBackup.Spec.StorageName,
+		)
+	}
+
+	return ""
 }
