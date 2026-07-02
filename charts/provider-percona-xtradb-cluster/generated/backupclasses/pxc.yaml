@@ -8,8 +8,10 @@ spec:
   config:
     openAPIV3Schema:
       type: object
-  description: 'TODO: describe what this BackupClass does.'
-  displayName: Pxc Backup Class
+  description: |
+    BackupClass for MySQL based on Percona XtraDB Cluster provider. Backups are managed
+    PXC operator; OpenEverest does not run any side-car Job for this class.
+  displayName: Percona Backup for MySQL based on Percona XtraDB Cluster
   executionMode: ProviderManaged
   providerManaged:
     limits:
