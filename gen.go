@@ -14,4 +14,5 @@
 
 package providerperconaxtradbcluster
 
+//go:generate go run ./cmd/pitr-defaults-gen
 //go:generate go tool provider-sdk generate

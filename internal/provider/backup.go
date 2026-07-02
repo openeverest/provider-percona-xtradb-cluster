@@ -19,8 +19,10 @@ import (
 )
 
 const (
-	pxcBackupDeleteDataFinalizer = "percona.com/delete-backup"
-	instanceNameLabelKey         = "instanceName"
+	pxcBackupDeleteDataFinalizer  = "percona.com/delete-backup"
+	instanceNameLabelKey          = "instanceName"
+	defaultPITRTimeBetweenUploads = 80
+	defaultPITRTimeoutSeconds     = 3800
 )
 
 type pxcPITRConfig struct {

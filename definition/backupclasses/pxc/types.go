@@ -19,7 +19,11 @@ type PxcRestoreConfig struct{}
 // to fine-tune its PITR pipeline (oplog span, compression, retention, etc.).
 type PxcPITRConfig struct {
 	// TimeBetweenUploads controls binlog upload interval in seconds.
+	// +k8s:minimum=1
+	// +default=80
 	TimeBetweenUploads *float64 `json:"timeBetweenUploads,omitempty"`
 	// TimeoutSeconds controls timeout for each PITR upload in seconds.
+	// +k8s:minimum=1
+	// +default=3800
 	TimeoutSeconds *float64 `json:"timeoutSeconds,omitempty"`
 }

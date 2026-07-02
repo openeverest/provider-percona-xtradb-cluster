@@ -14,6 +14,7 @@
 #     describing backup-time and restore-time custom config respectively.
 #
 # Co-located files:
+#   defaults.yaml — canonical PITR defaults/constraints; propagated by generator.
 #   ui.yaml  — free-form UI rendering hints, inlined verbatim under spec.uiSchema.
 #   types.go — Go types referenced above; OpenAPI-extracted by provider-sdk generate.
 

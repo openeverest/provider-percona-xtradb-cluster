@@ -37,6 +37,7 @@ definition/
 | `backupclasses/<name>/class.yaml` | BackupClass metadata: `executionMode`, `supportedProviders`, `providerManaged.limits` (caps the runtime enforces against Instance.spec.backup), `providerManaged.pitrConfigSchema`, and `config.openAPIV3Schema` / `restoreConfig.openAPIV3Schema` Go type references. | When adding a new backup class or changing its capabilities. |
 | `backupclasses/<name>/ui.yaml` | Free-form UI schema grouped by modal: `backup`, `pitr`, `restore`. Inlined verbatim under `spec.uiSchema` on the generated BackupClass. | When the form a user fills in to configure backups changes. |
 | `backupclasses/<name>/types.go` | Go structs whose OpenAPI v3 representations are inlined into `config.openAPIV3Schema`, `restoreConfig.openAPIV3Schema`, and `providerManaged.pitrConfigSchema`. | When the backup/restore/PITR config shape changes. |
+| `backupclasses/<name>/defaults.yaml` | Canonical defaults/constraints for backup-class-specific values that must stay aligned across schema markers, UI defaults, and backend fallbacks. | When changing default or minimum values shared by schema/UI/runtime. |
 
 ## How it all fits together
 

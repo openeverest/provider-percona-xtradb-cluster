@@ -227,6 +227,8 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			pitrEnabled++
 			backupSpec.PITR.Enabled = true
 			backupSpec.PITR.StorageName = storage.Name
+			backupSpec.PITR.TimeBetweenUploads = defaultPITRTimeBetweenUploads
+			backupSpec.PITR.TimeoutSeconds = defaultPITRTimeoutSeconds
 
 			cfg := &pxcPITRConfig{}
 			if storage.PITR.Config != nil && len(storage.PITR.Config.Raw) > 0 {

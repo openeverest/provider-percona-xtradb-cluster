@@ -1,0 +1,13 @@
+# Canonical defaults/constraints for PXC PITR config.
+# `cmd/pitr-defaults-gen` propagates these values to:
+#   - definition/backupclasses/pxc/types.go (OpenAPI markers)
+#   - definition/backupclasses/pxc/ui.yaml (UI defaults/validation)
+#   - internal/provider/backup.go (backend fallback constants)
+pitr:
+  timeBetweenUploads:
+    default: 80
+    min: 1
+  timeoutSeconds:
+    default: 3800
+    min: 1
+
