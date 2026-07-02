@@ -296,10 +296,6 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		}
 	}
 
-	opRestore.Spec.PXCCluster = restore.Spec.InstanceName
-	opRestore.Spec.BackupName = opBackupName
-	opRestore.Spec.PITR = desiredPITR
-
 	origRestore := opRestore.DeepCopy()
 	if err := controllerutil.SetControllerReference(restore, opRestore, c.Client().Scheme()); err != nil {
 		return controller.RestoreExecutionStatus{}, fmt.Errorf("set restore controller reference: %w", err)
