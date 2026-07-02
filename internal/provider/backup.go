@@ -57,6 +57,12 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		Name:     backup.Name,
 	}
 	managedByRuntime := backup.Spec.ScheduleName == ""
+	ensureBackupControllerReference := func(opBackup *pxcv1.PerconaXtraDBClusterBackup) error {
+		if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
+			return fmt.Errorf("set backup controller reference: %w", err)
+		}
+		return nil
+	}
 
 	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
 	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Name}, opBackup)
@@ -113,8 +119,8 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		if !c.ShouldRetainBackupData(backup) {
 			opBackup.Finalizers = []string{pxcBackupDeleteDataFinalizer}
 		}
-		if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
-			return controller.BackupExecutionStatus{}, fmt.Errorf("set backup controller reference: %w", err)
+		if err := ensureBackupControllerReference(opBackup); err != nil {
+			return controller.BackupExecutionStatus{}, err
 		}
 		if err := c.Client().Create(c.Context(), opBackup); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
@@ -146,8 +152,8 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		} else {
 			controllerutil.AddFinalizer(opBackup, pxcBackupDeleteDataFinalizer)
 		}
-		if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
-			return controller.BackupExecutionStatus{}, fmt.Errorf("set backup controller reference: %w", err)
+		if err := ensureBackupControllerReference(opBackup); err != nil {
+			return controller.BackupExecutionStatus{}, err
 		}
 		if !reflect.DeepEqual(origBackup.Spec, opBackup.Spec) ||
 			!reflect.DeepEqual(origBackup.Finalizers, opBackup.Finalizers) ||
