@@ -40,7 +40,6 @@ spec:
       components:
         timeBetweenUploads:
           fieldParams:
-            defaultValue: 80
             label: Upload interval (seconds)
           path: spec.backup.storages[].pitr.config.timeBetweenUploads
           uiType: number
@@ -48,7 +47,6 @@ spec:
             min: 1
         timeoutSeconds:
           fieldParams:
-            defaultValue: 3800
             label: Upload timeout (seconds)
           path: spec.backup.storages[].pitr.config.timeoutSeconds
           uiType: number
