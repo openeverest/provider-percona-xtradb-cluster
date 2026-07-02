@@ -239,14 +239,15 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		return controller.RestoreExecutionStatus{}, fmt.Errorf("get source Backup %q: %w", restore.Spec.DataSource.Backup.BackupName, err)
 	}
 
+	if sourceBackup.Status.State == backupv1alpha1.BackupStateFailed {
+		return controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            "Source Backup failed; cannot restore",
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+
 	if restore.Spec.DataSource.Backup.PITR != nil {
-		if sourceBackup.Status.State == backupv1alpha1.BackupStateFailed {
-			return controller.RestoreExecutionStatus{
-				State:              backupv1alpha1.RestoreStateFailed,
-				Message:            "Source Backup failed; cannot run PITR",
-				OperatorRestoreRef: opRef,
-			}, nil
-		}
 		if sourceBackup.Status.State != backupv1alpha1.BackupStateSucceeded {
 			return controller.RestoreExecutionStatus{
 				State:              backupv1alpha1.RestoreStatePending,
