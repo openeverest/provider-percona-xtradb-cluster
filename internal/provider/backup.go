@@ -40,12 +40,12 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 	l := log.FromContext(c.Context())
 	l.Info("Syncing backup", "name", backup.Name)
 
-	origBackupCR := backup.DeepCopy()
 	if backup.Labels == nil {
 		backup.Labels = map[string]string{}
 	}
-	backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceName
-	if !reflect.DeepEqual(origBackupCR.Labels, backup.Labels) {
+	if backup.Labels[instanceNameLabelKey] != backup.Spec.InstanceName {
+		origBackupCR := backup.DeepCopy()
+		backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceName
 		if err := c.Client().Patch(c.Context(), backup, client.MergeFrom(origBackupCR)); err != nil {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("patch Backup %q labels: %w", backup.Name, err)
 		}
@@ -187,12 +187,12 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	l := log.FromContext(c.Context())
 	l.Info("Syncing restore", "name", restore.Name)
 
-	origRestoreCR := restore.DeepCopy()
 	if restore.Labels == nil {
 		restore.Labels = map[string]string{}
 	}
-	restore.Labels[instanceNameLabelKey] = restore.Spec.InstanceName
-	if !reflect.DeepEqual(origRestoreCR.Labels, restore.Labels) {
+	if restore.Labels[instanceNameLabelKey] != restore.Spec.InstanceName {
+		origRestoreCR := restore.DeepCopy()
+		restore.Labels[instanceNameLabelKey] = restore.Spec.InstanceName
 		if err := c.Client().Patch(c.Context(), restore, client.MergeFrom(origRestoreCR)); err != nil {
 			return controller.RestoreExecutionStatus{}, fmt.Errorf("patch Restore %q labels: %w", restore.Name, err)
 		}
