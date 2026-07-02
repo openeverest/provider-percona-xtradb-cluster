@@ -258,9 +258,6 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	}
 
 	opBackupName := sourceBackup.Name
-	if sourceBackup.Status.OperatorBackupRef != nil && sourceBackup.Status.OperatorBackupRef.Name != "" {
-		opBackupName = sourceBackup.Status.OperatorBackupRef.Name
-	}
 
 	desiredPITR, pending, err := desiredOperatorPITRSpec(c, restore, opBackupName, opRef)
 	if err != nil {
@@ -414,9 +411,6 @@ func (p *PXCProvider) CleanupBackup(c *controller.Context, backup *backupv1alpha
 	l.Info("Cleaning up backup", "name", backup.Name)
 
 	name := backup.Name
-	if backup.Status.OperatorBackupRef != nil && backup.Status.OperatorBackupRef.Name != "" {
-		name = backup.Status.OperatorBackupRef.Name
-	}
 
 	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
 	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: name}, opBackup)
@@ -453,9 +447,6 @@ func (p *PXCProvider) CleanupRestore(c *controller.Context, restore *backupv1alp
 	l.Info("Cleaning up restore", "name", restore.Name)
 
 	name := restore.Name
-	if restore.Status.OperatorRestoreRef != nil && restore.Status.OperatorRestoreRef.Name != "" {
-		name = restore.Status.OperatorRestoreRef.Name
-	}
 
 	opRestore := &pxcv1.PerconaXtraDBClusterRestore{}
 	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: name}, opRestore)
