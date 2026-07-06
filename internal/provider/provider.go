@@ -188,6 +188,14 @@ func ValidatePXC(c *controller.Context) error {
 		for _, s := range c.Instance().Spec.Backup.Storages {
 			if s.PITR != nil && s.PITR.Enabled {
 				pitrEnabled++
+
+				var rawCfg []byte
+				if s.PITR.Config != nil {
+					rawCfg = s.PITR.Config.Raw
+				}
+				if _, err := decodeAndValidatePITRConfig(s.Name, rawCfg); err != nil {
+					return err
+				}
 			}
 		}
 		if pitrEnabled > 1 {

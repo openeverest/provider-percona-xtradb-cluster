@@ -24,7 +24,9 @@ import (
 var _ controller.BackupMirror = (*PXCProvider)(nil)
 
 const (
-	backupTypeCron = "cron"
+	backupTypeCron                = "cron"
+	defaultPITRTimeBetweenUploads = 60.0
+	defaultPITRTimeoutSeconds     = 3600.0
 )
 
 // Mirror implements controller.BackupMirror (optional). The runtime invokes
@@ -228,11 +230,13 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			backupSpec.PITR.Enabled = true
 			backupSpec.PITR.StorageName = storage.Name
 
-			cfg := &pxcPITRConfig{}
-			if storage.PITR.Config != nil && len(storage.PITR.Config.Raw) > 0 {
-				if err := json.Unmarshal(storage.PITR.Config.Raw, cfg); err != nil {
-					return &controller.BackupConfigError{Reason: "InvalidPITRConfig", Message: fmt.Sprintf("decode PITR config for storage %q: %v", storage.Name, err)}
-				}
+			var rawCfg []byte
+			if storage.PITR.Config != nil {
+				rawCfg = storage.PITR.Config.Raw
+			}
+			cfg, err := decodeAndValidatePITRConfig(storage.Name, rawCfg)
+			if err != nil {
+				return &controller.BackupConfigError{Reason: "InvalidPITRConfig", Message: err.Error()}
 			}
 			if cfg.TimeBetweenUploads != nil {
 				backupSpec.PITR.TimeBetweenUploads = *cfg.TimeBetweenUploads
@@ -271,6 +275,33 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 
 	pxc.Spec.Backup = backupSpec
 	return nil
+}
+
+func decodeAndValidatePITRConfig(storageName string, raw []byte) (*pxcPITRConfig, error) {
+	cfg := &pxcPITRConfig{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, cfg); err != nil {
+			return nil, fmt.Errorf("decode PITR config for storage %q: %w", storageName, err)
+		}
+	}
+
+	if cfg.TimeBetweenUploads == nil {
+		v := defaultPITRTimeBetweenUploads
+		cfg.TimeBetweenUploads = &v
+	}
+	if cfg.TimeoutSeconds == nil {
+		v := defaultPITRTimeoutSeconds
+		cfg.TimeoutSeconds = &v
+	}
+
+	if cfg.TimeBetweenUploads != nil && *cfg.TimeBetweenUploads < 1 {
+		return nil, fmt.Errorf("PITR config for storage %q: timeBetweenUploads must be >= 1", storageName)
+	}
+	if cfg.TimeoutSeconds != nil && *cfg.TimeoutSeconds < 1 {
+		return nil, fmt.Errorf("PITR config for storage %q: timeoutSeconds must be >= 1", storageName)
+	}
+
+	return cfg, nil
 }
 
 func resolveBackupBucket(storageBucket, instanceUID string) string {

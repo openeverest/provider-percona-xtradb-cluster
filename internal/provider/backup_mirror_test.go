@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -141,5 +142,66 @@ func TestMirrorUsesSchedulerNameWhenProvided(t *testing.T) {
 	}
 	if mirror.Spec.ScheduleName != "nightly" {
 		t.Fatalf("unexpected scheduleName %q", mirror.Spec.ScheduleName)
+	}
+}
+
+func TestDecodeAndValidatePITRConfigRejectsNegativeValues(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeAndValidatePITRConfig("bs-msp-1", []byte(`{"timeBetweenUploads":-1}`))
+	if err == nil {
+		t.Fatal("expected error for negative timeBetweenUploads")
+	}
+	if !strings.Contains(err.Error(), "timeBetweenUploads must be >= 1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = decodeAndValidatePITRConfig("bs-msp-1", []byte(`{"timeoutSeconds":0}`))
+	if err == nil {
+		t.Fatal("expected error for non-positive timeoutSeconds")
+	}
+	if !strings.Contains(err.Error(), "timeoutSeconds must be >= 1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDecodeAndValidatePITRConfigAcceptsValidValues(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := decodeAndValidatePITRConfig("bs-msp-1", []byte(`{"timeBetweenUploads":60,"timeoutSeconds":3600}`))
+	if err != nil {
+		t.Fatalf("decodeAndValidatePITRConfig() error = %v", err)
+	}
+	if cfg.TimeBetweenUploads == nil || *cfg.TimeBetweenUploads != 60 {
+		t.Fatalf("unexpected timeBetweenUploads: %#v", cfg.TimeBetweenUploads)
+	}
+	if cfg.TimeoutSeconds == nil || *cfg.TimeoutSeconds != 3600 {
+		t.Fatalf("unexpected timeoutSeconds: %#v", cfg.TimeoutSeconds)
+	}
+}
+
+func TestDecodeAndValidatePITRConfigAppliesDefaults(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := decodeAndValidatePITRConfig("bs-msp-1", nil)
+	if err != nil {
+		t.Fatalf("decodeAndValidatePITRConfig() error = %v", err)
+	}
+	if cfg.TimeBetweenUploads == nil || *cfg.TimeBetweenUploads != 60 {
+		t.Fatalf("unexpected default timeBetweenUploads: %#v", cfg.TimeBetweenUploads)
+	}
+	if cfg.TimeoutSeconds == nil || *cfg.TimeoutSeconds != 3600 {
+		t.Fatalf("unexpected default timeoutSeconds: %#v", cfg.TimeoutSeconds)
+	}
+
+	cfg, err = decodeAndValidatePITRConfig("bs-msp-1", []byte(`{"timeBetweenUploads":120}`))
+	if err != nil {
+		t.Fatalf("decodeAndValidatePITRConfig() error = %v", err)
+	}
+	if cfg.TimeBetweenUploads == nil || *cfg.TimeBetweenUploads != 120 {
+		t.Fatalf("unexpected overridden timeBetweenUploads: %#v", cfg.TimeBetweenUploads)
+	}
+	if cfg.TimeoutSeconds == nil || *cfg.TimeoutSeconds != 3600 {
+		t.Fatalf("unexpected default timeoutSeconds for partial config: %#v", cfg.TimeoutSeconds)
 	}
 }
