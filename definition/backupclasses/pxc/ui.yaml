@@ -21,7 +21,6 @@ pitr:
       uiType: number
       fieldParams:
         label: Upload interval (seconds)
-        defaultValue: 60
       validation:
         min: 1
     timeoutSeconds:
@@ -29,7 +28,6 @@ pitr:
       uiType: number
       fieldParams:
         label: Upload timeout (seconds)
-        defaultValue: 3600
       validation:
         min: 1
 restore:

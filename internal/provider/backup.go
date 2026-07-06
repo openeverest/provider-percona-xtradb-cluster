@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -155,12 +154,8 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		if err := ensureBackupControllerReference(opBackup); err != nil {
 			return controller.BackupExecutionStatus{}, err
 		}
-		if !reflect.DeepEqual(origBackup.Spec, opBackup.Spec) ||
-			!reflect.DeepEqual(origBackup.Finalizers, opBackup.Finalizers) ||
-			!reflect.DeepEqual(origBackup.OwnerReferences, opBackup.OwnerReferences) {
-			if err := c.Client().Update(c.Context(), opBackup); err != nil {
-				return controller.BackupExecutionStatus{}, fmt.Errorf("update PerconaXtraDBClusterBackup %q: %w", backup.Name, err)
-			}
+		if err := c.Client().Patch(c.Context(), opBackup, client.MergeFrom(origBackup)); err != nil {
+			return controller.BackupExecutionStatus{}, fmt.Errorf("patch PerconaXtraDBClusterBackup %q: %w", backup.Name, err)
 		}
 	}
 
@@ -300,11 +295,8 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	if err := controllerutil.SetControllerReference(restore, opRestore, c.Client().Scheme()); err != nil {
 		return controller.RestoreExecutionStatus{}, fmt.Errorf("set restore controller reference: %w", err)
 	}
-	if !reflect.DeepEqual(origRestore.Spec, opRestore.Spec) ||
-		!reflect.DeepEqual(origRestore.OwnerReferences, opRestore.OwnerReferences) {
-		if err := c.Client().Update(c.Context(), opRestore); err != nil {
-			return controller.RestoreExecutionStatus{}, fmt.Errorf("update PerconaXtraDBClusterRestore %q: %w", restore.Name, err)
-		}
+	if err := c.Client().Patch(c.Context(), opRestore, client.MergeFrom(origRestore)); err != nil {
+		return controller.RestoreExecutionStatus{}, fmt.Errorf("patch PerconaXtraDBClusterRestore %q: %w", restore.Name, err)
 	}
 
 	out := controller.RestoreExecutionStatus{
