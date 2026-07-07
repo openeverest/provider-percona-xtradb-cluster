@@ -22,6 +22,7 @@ const (
 	ComponentEngine     = "engine"
 	ComponentProxy      = "proxy"
 	ComponentMonitoring = "monitoring"
+	ComponentBackup = "backup"
 )
 
 // Proxy type constants supported by the provider.

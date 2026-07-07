@@ -99,6 +99,27 @@ func defaultImageForComponentType(spec *corev1alpha1.ProviderSpec, componentType
 	return ""
 }
 
+func backupImageForEngineVersion(spec *corev1alpha1.ProviderSpec, engineVersion string) string {
+	if spec == nil || engineVersion == "" {
+		return ""
+	}
+
+	for _, bundle := range spec.Versions {
+		if bundle.Components[common.ComponentEngine] != engineVersion {
+			continue
+		}
+		backupVersion := bundle.Components[common.ComponentBackup]
+		if backupVersion == "" {
+			continue
+		}
+		if image := controller.GetImageForVersion(spec, common.ComponentBackup, backupVersion); image != "" {
+			return image
+		}
+	}
+
+	return defaultImageForComponentType(spec, common.ComponentBackup)
+}
+
 func imageForBundledProxy(c *controller.Context, spec *corev1alpha1.ProviderSpec, proxyType string) (string, error) {
 	selectedBundle := c.Instance().Spec.Version
 	if selectedBundle == "" {
@@ -154,6 +175,34 @@ func ValidatePXC(c *controller.Context) error {
 		return fmt.Errorf("unsupported proxy type %q", proxy.Type)
 	}
 
+	if c.Instance().Spec.Backup != nil && c.Instance().Spec.Backup.Enabled {
+		bc, err := c.BackupClassForInstance()
+		if err != nil {
+			return err
+		}
+		if err := controller.ValidateInstanceBackupAgainstClass(c.Instance(), bc); err != nil {
+			return err
+		}
+
+		pitrEnabled := 0
+		for _, s := range c.Instance().Spec.Backup.Storages {
+			if s.PITR != nil && s.PITR.Enabled {
+				pitrEnabled++
+
+				var rawCfg []byte
+				if s.PITR.Config != nil {
+					rawCfg = s.PITR.Config.Raw
+				}
+				if _, err := decodeAndValidatePITRConfig(s.Name, rawCfg); err != nil {
+					return err
+				}
+			}
+		}
+		if pitrEnabled > 1 {
+			return fmt.Errorf("PXC supports PITR on at most one storage")
+		}
+	}
+
 	return nil
 }
 
@@ -163,6 +212,15 @@ func SyncPXC(c *controller.Context) error {
 	l.Info("Syncing PXC cluster", "cluster", c.Name())
 
 	defer l.Info("PXC cluster synced", "cluster", c.Name())
+
+	activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
+	if err != nil {
+		return fmt.Errorf("check active restores for %q: %w", c.Name(), err)
+	}
+	if activeRestore {
+		l.Info("Skipping PXC spec sync while restore is active", "cluster", c.Name())
+		return nil
+	}
 
 	meta := c.ObjectMeta(c.Name())
 	meta.Finalizers = []string{
@@ -277,6 +335,10 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
+	if err := applyBackupSettings(c, pxc); err != nil {
+		return err
+	}
+
 	usersSecretName := "everest-secrets-" + c.Name()
 
 	pxc.Spec.SecretsName = usersSecretName
@@ -329,6 +391,15 @@ func StatusPXC(c *controller.Context) (controller.Status, error) {
 		return controller.Restoring(ds.Message), nil
 	}
 	switch pxc.Status.Status {
+	case pxcv1.AppStatePaused:
+		activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
+		if err != nil {
+			return controller.Failed("Failed to list Restore resources: " + err.Error()), err
+		}
+		if activeRestore {
+			return controller.Restoring("Restore is running"), nil
+		}
+		return controller.Provisioning("Cluster is paused"), nil
 	case pxcv1.AppStateReady:
 		details, err := buildConnectionDetails(c, pxc)
 		if err != nil {
@@ -478,27 +549,6 @@ func (p *PXCProvider) FieldIndexes() []controller.FieldIndex {
 	}
 }
 
-// BackupWatches implements controller.BackupWatcher. The runtime's Backup
-// reconciler watches PerconaXtraDBClusterBackup CRs as owned resources so
-// operator status changes are routed directly to the parent Backup CR via
-// owner-reference based enqueue (1:1, no Instance fan-out). SyncBackup sets
-// the controller reference from Backup -> PerconaXtraDBClusterBackup, so
-// owner-based enqueue applies to every adopted backup. Operator-emitted
-// scheduled backups are still routed through the Instance reconciler (where
-// they get mirrored into Backup CRs) until the next SyncBackup adopts them.
-func (p *PXCProvider) BackupWatches() []controller.WatchConfig {
-	return []controller.WatchConfig{
-		controller.WatchOwned(&pxcv1.PerconaXtraDBClusterBackup{}),
-	}
-}
-
-// RestoreWatches mirrors BackupWatches for PerconaXtraDBClusterRestore.
-func (p *PXCProvider) RestoreWatches() []controller.WatchConfig {
-	return []controller.WatchConfig{
-		controller.WatchOwned(&pxcv1.PerconaXtraDBClusterRestore{}),
-	}
-}
-
 // buildConnectionDetails reads the PXC Users secret and combines it with host info
 // to produce a set of well-known connection details.
 func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster) (controller.ConnectionDetails, error) {
@@ -547,7 +597,3 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 var _ controller.ProviderInterface = (*PXCProvider)(nil)
 var _ controller.WatchProvider = (*PXCProvider)(nil)
 var _ controller.FieldIndexProvider = (*PXCProvider)(nil)
-var _ controller.BackupProvider = (*PXCProvider)(nil)
-var _ controller.BackupWatcher = (*PXCProvider)(nil)
-var _ controller.RestoreWatcher = (*PXCProvider)(nil)
-var _ controller.BackupMirror = (*PXCProvider)(nil)
