@@ -2,6 +2,36 @@
 
 This directory contains an implementation of a Percona Operator for MySQL based on Percona XtraDB Cluster (PXC) provider.
 
+## Installation
+
+The provider chart is published as an OCI artifact to the GitHub Container
+Registry. It bundles the Percona Operator for MySQL (PXC) as a subchart, so a
+single install brings up both the provider and the operator.
+
+```bash
+helm install provider-percona-xtradb-cluster \
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster \
+  --version 0.1.0 \
+  --create-namespace
+```
+
+Upgrade to a newer chart version:
+
+```bash
+helm upgrade provider-percona-xtradb-cluster \
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster \
+  --version 0.1.0
+```
+
+Uninstall:
+
+```bash
+helm uninstall provider-percona-xtradb-cluster
+```
+
+> Browse available versions on the
+> [chart package page](https://github.com/openeverest/provider-percona-xtradb-cluster/pkgs/container/charts%2Fprovider-percona-xtradb-cluster).
+
 ## 🚀 Quick Start
 
 ### Prerequisites
