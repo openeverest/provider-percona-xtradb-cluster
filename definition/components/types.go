@@ -12,23 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package components contains custom spec types for provider component types.
+// Package components contains parameters types for provider component types.
 //
 // Each struct here corresponds to a component type defined in versions.yaml
 // and is converted to an OpenAPI schema during generation.
-// Add fields when a component type needs custom configuration beyond
+// Add fields when a component type needs structured parameters beyond
 // what the base Instance spec provides.
 //
 // +k8s:openapi-gen=true
 package components
 
-// PXCCustomSpec defines custom configuration for PXC engine components.
+// PXCParameters defines structured parameters for PXC engine components.
 // This struct is converted to OpenAPI schema and served via the /schema endpoint.
-// Provider users can specify these fields in the Instance's component CustomSpec.
-type PXCCustomSpec struct{}
+// Provider users can specify these fields in the Instance's component parameters.
+type PXCParameters struct {
+	// Configuration is the raw my.cnf-style engine configuration file content.
+	// `configuration` is the conventional property name for the engine
+	// configuration file inside a component's parameters schema.
+	Configuration string `json:"configuration,omitempty"`
+}
 
-// PMMCustomSpec defines custom configuration for PMM monitoring.
-type PMMCustomSpec struct {
+// PMMParameters defines structured parameters for PMM monitoring.
+type PMMParameters struct {
 	// MonitoringConfigName specifies the name of the MonitoringConfig resource
 	// to use for configuring PMM monitoring.
 	// If not specified, monitoring will not be configured.

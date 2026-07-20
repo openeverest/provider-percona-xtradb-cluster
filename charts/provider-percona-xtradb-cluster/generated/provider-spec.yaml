@@ -61,8 +61,20 @@ spec:
     backup:
       type: backup
     engine:
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            configuration:
+              type: string
+          type: object
       type: pxc
     monitoring:
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            monitoringConfigName:
+              type: string
+          type: object
       type: pmm
     proxy:
       type: haproxy
@@ -73,8 +85,9 @@ spec:
         monitoring:
           optional: true
         proxy: {}
-      configSchema:
-        type: object
+      parametersSchema:
+        openAPIV3Schema:
+          type: object
   uiSchema:
     cluster:
       sections:
@@ -132,7 +145,7 @@ spec:
                   wsrep_trx_fragment_size = 1048576
                   wsrep_trx_fragment_unit = bytes
                   wsrep-provider-options = evs.delayed_keep_period=PT545S;evs.inactive_timeout=PT90S;gmcast.peer_timeout=PT11S;gmcast.time_wait=PT13S;pc.linger=PT45S;evs.delay_margin=PT22S;evs.suspect_timeout=PT45S;gcs.fc_limit=96;gcs.max_packet_size=98304;evs.send_window=768;evs.user_send_window=768;evs.join_retrans_period=PT3S;evs.inactive_check_period=PT3S;evs.stats_report_period=PT1M;evs.max_install_timeouts=3;pc.announce_timeout=PT45S;pc.recovery=true;gcache.size=477560113;gcache.recover=yes;
-              path: spec.components.engine.configuration
+              path: spec.components.engine.parameters.configuration
               uiType: text
             storageClass:
               dataSource:
@@ -181,7 +194,7 @@ spec:
               fieldParams:
                 displayEmpty: true
                 label: Monitoring endpoint
-              path: spec.components.monitoring.customSpec.monitoringConfigName
+              path: spec.components.monitoring.parameters.monitoringConfigName
               uiType: select
           description: Attach a MonitoringConfig to collect metrics.
           label: Monitoring
