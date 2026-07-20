@@ -59,8 +59,8 @@ func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBClus
 	if monitoringCfg.Spec.Type != monitoringv1alpha1.PMMMonitoringType || monitoringCfg.Spec.PMM == nil {
 		return fmt.Errorf("MonitoringConfig %q must be type %q", monitoringConfigName, monitoringv1alpha1.PMMMonitoringType)
 	}
-	if monitoringCfg.Spec.PMM.CredentialsSecretName == "" {
-		return fmt.Errorf("MonitoringConfig %q must set spec.pmm.credentialsSecretName", monitoringConfigName)
+	if monitoringCfg.Spec.PMM.CredentialsSecretRef.Name == "" {
+		return fmt.Errorf("MonitoringConfig %q must set spec.pmm.credentialsSecretRef.name", monitoringConfigName)
 	}
 
 	serverHost, err := pmmServerHostFromURL(monitoringCfg.Spec.PMM.URL)
@@ -73,7 +73,7 @@ func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBClus
 		return fmt.Errorf("cannot resolve PMM image for component %q", common.ComponentMonitoring)
 	}
 
-	if err := syncPMMCredentials(c, monitoringCfg.Spec.PMM.CredentialsSecretName, pmmImage); err != nil {
+	if err := syncPMMCredentials(c, monitoringCfg.Spec.PMM.CredentialsSecretRef.Name, pmmImage); err != nil {
 		return err
 	}
 
