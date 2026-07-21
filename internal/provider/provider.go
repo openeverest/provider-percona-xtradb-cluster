@@ -193,7 +193,7 @@ func ValidatePXC(c *controller.Context) error {
 				if s.PITR.Config != nil {
 					rawCfg = s.PITR.Config.Raw
 				}
-				if _, err := decodeAndValidatePITRConfig(s.Name, rawCfg); err != nil {
+				if _, err := decodeAndValidatePITRConfig(s.StorageRef.Name, rawCfg); err != nil {
 					return err
 				}
 			}
@@ -281,7 +281,9 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	if engine.Config == nil {
+	if engine.Config != "" {
+		pxc.Spec.PXC.Configuration = engine.Config
+	} else {
 		switch *engine.Replicas {
 		case 1:
 			pxc.Spec.PXC.Configuration = pxcConfigSizeSmall
@@ -485,7 +487,7 @@ func NewPXCProviderInterface() *PXCProvider {
 					requests := make([]reconcile.Request, 0, len(instances.Items))
 					for i := range instances.Items {
 						instance := instances.Items[i]
-						if instance.Spec.Provider != p.Name() {
+						if instance.Spec.ProviderRef.Name != p.Name() {
 							continue
 						}
 						requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&instance)})

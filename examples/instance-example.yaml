@@ -25,7 +25,8 @@ spec:
   deletionPolicy: Cascade
 
   # Provider identifier
-  provider: percona-xtradb-cluster
+  providerRef:
+    name: percona-xtradb-cluster
 
   # Topology configuration
   topology:

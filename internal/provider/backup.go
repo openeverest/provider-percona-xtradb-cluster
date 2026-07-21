@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	common "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,18 +42,18 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 	if backup.Labels == nil {
 		backup.Labels = map[string]string{}
 	}
-	if backup.Labels[instanceNameLabelKey] != backup.Spec.InstanceName {
+	if backup.Labels[instanceNameLabelKey] != backup.Spec.InstanceRef.Name {
 		origBackupCR := backup.DeepCopy()
-		backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceName
+		backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceRef.Name
 		if err := c.Client().Patch(c.Context(), backup, client.MergeFrom(origBackupCR)); err != nil {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("patch Backup %q labels: %w", backup.Name, err)
 		}
 	}
 
-	opRef := &corev1.TypedLocalObjectReference{
-		APIGroup: ptrTo(pxcv1.SchemeGroupVersion.Group),
-		Kind:     "PerconaXtraDBClusterBackup",
-		Name:     backup.Name,
+	opRef := &common.TypedObjectRef{
+		Group: pxcv1.SchemeGroupVersion.Group,
+		Kind:  "PerconaXtraDBClusterBackup",
+		Name:  backup.Name,
 	}
 	managedByRuntime := backup.Spec.ScheduleName == ""
 	ensureBackupControllerReference := func(opBackup *pxcv1.PerconaXtraDBClusterBackup) error {
@@ -79,7 +79,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		}
 
 		pxc := &pxcv1.PerconaXtraDBCluster{}
-		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Spec.InstanceName}, pxc); err != nil {
+		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Spec.InstanceRef.Name}, pxc); err != nil {
 			if apierrors.IsNotFound(err) {
 				return controller.BackupExecutionStatus{
 					State:             backupv1alpha1.BackupStatePending,
@@ -87,7 +87,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 					OperatorBackupRef: opRef,
 				}, nil
 			}
-			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.InstanceName, err)
+			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.InstanceRef.Name, err)
 		}
 
 		if pxc.Spec.Backup == nil || pxc.Spec.Backup.Storages == nil {
@@ -97,10 +97,10 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				OperatorBackupRef: opRef,
 			}, nil
 		}
-		if _, ok := pxc.Spec.Backup.Storages[backup.Spec.StorageName]; !ok {
+		if _, ok := pxc.Spec.Backup.Storages[backup.Spec.StorageRef.Name]; !ok {
 			return controller.BackupExecutionStatus{
 				State:             backupv1alpha1.BackupStateFailed,
-				Message:           fmt.Sprintf("Storage %q is not configured on the cluster", backup.Spec.StorageName),
+				Message:           fmt.Sprintf("Storage %q is not configured on the cluster", backup.Spec.StorageRef.Name),
 				OperatorBackupRef: opRef,
 			}, nil
 		}
@@ -111,8 +111,8 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				Namespace: backup.Namespace,
 			},
 			Spec: pxcv1.PXCBackupSpec{
-				PXCCluster:  backup.Spec.InstanceName,
-				StorageName: backup.Spec.StorageName,
+				PXCCluster:  backup.Spec.InstanceRef.Name,
+				StorageName: backup.Spec.StorageRef.Name,
 			},
 		}
 		if !c.ShouldRetainBackupData(backup) {
@@ -139,9 +139,9 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				immutableErr,
 				"failed to reconcile backup CR",
 				"backup", backup.Name,
-				"requestedInstanceName", backup.Spec.InstanceName,
+				"requestedInstanceName", backup.Spec.InstanceRef.Name,
 				"existingInstanceName", opBackup.Spec.PXCCluster,
-				"requestedStorageName", backup.Spec.StorageName,
+				"requestedStorageName", backup.Spec.StorageRef.Name,
 				"existingStorageName", opBackup.Spec.StorageName,
 				"reason", immutableChangeMsg,
 			)
@@ -200,30 +200,30 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	if restore.Labels == nil {
 		restore.Labels = map[string]string{}
 	}
-	if restore.Labels[instanceNameLabelKey] != restore.Spec.InstanceName {
+	if restore.Labels[instanceNameLabelKey] != restore.Spec.InstanceRef.Name {
 		origRestoreCR := restore.DeepCopy()
-		restore.Labels[instanceNameLabelKey] = restore.Spec.InstanceName
+		restore.Labels[instanceNameLabelKey] = restore.Spec.InstanceRef.Name
 		if err := c.Client().Patch(c.Context(), restore, client.MergeFrom(origRestoreCR)); err != nil {
 			return controller.RestoreExecutionStatus{}, fmt.Errorf("patch Restore %q labels: %w", restore.Name, err)
 		}
 	}
 
-	opRef := &corev1.TypedLocalObjectReference{
-		APIGroup: ptrTo(pxcv1.SchemeGroupVersion.Group),
-		Kind:     "PerconaXtraDBClusterRestore",
-		Name:     restore.Name,
+	opRef := &common.TypedObjectRef{
+		Group: pxcv1.SchemeGroupVersion.Group,
+		Kind:  "PerconaXtraDBClusterRestore",
+		Name:  restore.Name,
 	}
 
-	if restore.Spec.DataSource.Backup == nil || restore.Spec.DataSource.Backup.BackupName == "" {
+	if restore.Spec.DataSource.Backup == nil || restore.Spec.DataSource.Backup.BackupRef.Name == "" {
 		return controller.RestoreExecutionStatus{
 			State:              backupv1alpha1.RestoreStateFailed,
-			Message:            "Restore dataSource.backup.backupName is required",
+			Message:            "Restore dataSource.backup.backupRef.name is required",
 			OperatorRestoreRef: opRef,
 		}, nil
 	}
 
 	sourceBackup := &backupv1alpha1.Backup{}
-	if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: restore.Spec.DataSource.Backup.BackupName}, sourceBackup); err != nil {
+	if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: restore.Spec.DataSource.Backup.BackupRef.Name}, sourceBackup); err != nil {
 		if apierrors.IsNotFound(err) {
 			return controller.RestoreExecutionStatus{
 				State:              backupv1alpha1.RestoreStatePending,
@@ -231,7 +231,7 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 				OperatorRestoreRef: opRef,
 			}, nil
 		}
-		return controller.RestoreExecutionStatus{}, fmt.Errorf("get source Backup %q: %w", restore.Spec.DataSource.Backup.BackupName, err)
+		return controller.RestoreExecutionStatus{}, fmt.Errorf("get source Backup %q: %w", restore.Spec.DataSource.Backup.BackupRef.Name, err)
 	}
 
 	if sourceBackup.Status.State == backupv1alpha1.BackupStateFailed {
@@ -272,7 +272,7 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		opRestore = &pxcv1.PerconaXtraDBClusterRestore{
 			ObjectMeta: metav1.ObjectMeta{Name: restore.Name, Namespace: restore.Namespace},
 			Spec: pxcv1.PerconaXtraDBClusterRestoreSpec{
-				PXCCluster: restore.Spec.InstanceName,
+				PXCCluster: restore.Spec.InstanceRef.Name,
 				BackupName: opBackupName,
 				PITR:       desiredPITR,
 			},
@@ -334,7 +334,7 @@ func desiredOperatorPITRSpec(
 	c *controller.Context,
 	restore *backupv1alpha1.Restore,
 	opBackupName string,
-	opRef *corev1.TypedLocalObjectReference,
+	opRef *common.TypedObjectRef,
 ) (*pxcv1.PITR, *controller.RestoreExecutionStatus, error) {
 	pitr := restore.Spec.DataSource.Backup.PITR
 	if pitr == nil {
@@ -483,7 +483,7 @@ func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName 
 
 	for i := range restoreList.Items {
 		r := restoreList.Items[i]
-		if r.Spec.InstanceName != instanceName || !r.DeletionTimestamp.IsZero() {
+		if r.Spec.InstanceRef.Name != instanceName || !r.DeletionTimestamp.IsZero() {
 			continue
 		}
 		switch r.Status.State {
@@ -517,17 +517,17 @@ func ptrTo[T any](v T) *T {
 }
 
 func immutableBackupSpecChangeMessage(opBackup *pxcv1.PerconaXtraDBClusterBackup, backup *backupv1alpha1.Backup) string {
-	if backup.Spec.InstanceName != opBackup.Spec.PXCCluster {
+	if backup.Spec.InstanceRef.Name != opBackup.Spec.PXCCluster {
 		return fmt.Sprintf(
-			"cannot change backup spec.instanceName after creation (requested %q, existing %q)",
-			backup.Spec.InstanceName,
+			"cannot change backup spec.instanceRef.name after creation (requested %q, existing %q)",
+			backup.Spec.InstanceRef.Name,
 			opBackup.Spec.PXCCluster,
 		)
 	}
-	if backup.Spec.StorageName != opBackup.Spec.StorageName {
+	if backup.Spec.StorageRef.Name != opBackup.Spec.StorageName {
 		return fmt.Sprintf(
-			"cannot change backup spec.storageName after creation (requested %q, existing %q)",
-			backup.Spec.StorageName,
+			"cannot change backup spec.storageRef.name after creation (requested %q, existing %q)",
+			backup.Spec.StorageRef.Name,
 			opBackup.Spec.StorageName,
 		)
 	}

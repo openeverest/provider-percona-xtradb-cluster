@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	common "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
@@ -64,7 +65,7 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 	if scheduleName == "" {
 		scheduleName = scheduleNameFromAncestor(pxcBackup.Namespace, pxcBackup.Spec.PXCCluster, pxcBackup.Labels[naming.LabelPerconaBackupAncestorName])
 	}
-	if instance.Spec.Provider != "percona-xtradb-cluster" || instance.Spec.Backup == nil || instance.Spec.Backup.ClassRef.Name == "" {
+	if instance.Spec.ProviderRef.Name != "percona-xtradb-cluster" || instance.Spec.Backup == nil || instance.Spec.Backup.ClassRef.Name == "" {
 		return nil, nil
 	}
 
@@ -88,10 +89,10 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 			}},
 		},
 		Spec: backupv1alpha1.BackupSpec{
-			InstanceName:    pxcBackup.Spec.PXCCluster,
-			BackupClassName: instance.Spec.Backup.ClassRef.Name,
-			StorageName:     storageName,
-			ScheduleName:    scheduleName,
+			InstanceRef:  common.ObjectRef{Name: pxcBackup.Spec.PXCCluster},
+			ClassRef:     common.ObjectRef{Name: instance.Spec.Backup.ClassRef.Name},
+			StorageRef:   common.ObjectRef{Name: storageName},
+			ScheduleName: scheduleName,
 		},
 	}, nil
 }
@@ -187,7 +188,7 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 	pitrEnabled := 0
 	for _, storage := range c.Instance().Spec.Backup.Storages {
 		if storage.StorageRef.Name == "" {
-			return &controller.BackupConfigError{Reason: "StorageReferenceMissing", Message: fmt.Sprintf("backup storage %q must set storageRef.name", storage.Name)}
+			return &controller.BackupConfigError{Reason: "StorageReferenceMissing", Message: "backup storage entries must set storageRef.name"}
 		}
 
 		bs, err := c.BackupStorage(storage.StorageRef.Name)
@@ -209,7 +210,7 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			Type: pxcv1.BackupStorageS3,
 			S3: &pxcv1.BackupStorageS3Spec{
 				Bucket:            bucket,
-				CredentialsSecret: bs.Spec.S3.CredentialsSecretName,
+				CredentialsSecret: bs.Spec.S3.CredentialsSecretRef.Name,
 				Region:            bs.Spec.S3.Region,
 				EndpointURL:       bs.Spec.S3.EndpointURL,
 			},
@@ -223,18 +224,18 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 				}},
 			}
 		}
-		backupSpec.Storages[storage.Name] = opStorage
+		backupSpec.Storages[storage.StorageRef.Name] = opStorage
 
 		if storage.PITR != nil && storage.PITR.Enabled {
 			pitrEnabled++
 			backupSpec.PITR.Enabled = true
-			backupSpec.PITR.StorageName = storage.Name
+			backupSpec.PITR.StorageName = storage.StorageRef.Name
 
 			var rawCfg []byte
 			if storage.PITR.Config != nil {
 				rawCfg = storage.PITR.Config.Raw
 			}
-			cfg, err := decodeAndValidatePITRConfig(storage.Name, rawCfg)
+			cfg, err := decodeAndValidatePITRConfig(storage.StorageRef.Name, rawCfg)
 			if err != nil {
 				return &controller.BackupConfigError{Reason: "InvalidPITRConfig", Message: err.Error()}
 			}
@@ -253,7 +254,7 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			s := pxcv1.PXCScheduledBackupSchedule{
 				Name:        schedule.Name,
 				Schedule:    schedule.Cron,
-				StorageName: storage.Name,
+				StorageName: storage.StorageRef.Name,
 			}
 			if schedule.RetentionCopies > 0 {
 				s.Retention = &pxcv1.PXCScheduledBackupRetention{
