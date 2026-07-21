@@ -24,6 +24,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -190,8 +191,8 @@ func ValidatePXC(c *controller.Context) error {
 				pitrEnabled++
 
 				var rawCfg []byte
-				if s.PITR.Config != nil {
-					rawCfg = s.PITR.Config.Raw
+				if s.PITR.Parameters != nil {
+					rawCfg = s.PITR.Parameters.Raw
 				}
 				if _, err := decodeAndValidatePITRConfig(s.StorageRef.Name, rawCfg); err != nil {
 					return err
@@ -281,8 +282,12 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	if engine.Config != "" {
-		pxc.Spec.PXC.Configuration = engine.Config
+	// The engine configuration file is carried inside the engine component's
+	// parameters; `configuration` is the conventional property name for it.
+	var engineParams components.PXCParameters
+	c.TryDecodeComponentParameters(engine, &engineParams)
+	if engineParams.Configuration != "" {
+		pxc.Spec.PXC.Configuration = engineParams.Configuration
 	} else {
 		switch *engine.Replicas {
 		case 1:
