@@ -2,7 +2,7 @@
 # This file defines both the structural topology and its UI rendering.
 
 config:
-  parametersSchema: ClusterTopologyParameters
+  configSchema: ClusterTopologyConfig
   components:
     engine:
       defaults:
@@ -105,7 +105,7 @@ ui:
       components:
         monitoring:
           uiType: select
-          path: spec.components.monitoring.parameters.monitoringConfigName
+          path: spec.components.monitoring.customSpec.monitoringConfigName
           fieldParams:
             label: "Monitoring endpoint"
             displayEmpty: true
@@ -161,7 +161,7 @@ ui:
             provider: storageClasses
         configuration:
           uiType: text
-          path: spec.components.engine.parameters.configuration
+          path: spec.components.engine.configuration
           fieldParams:
             label: "Engine configuration"
             # configuration for small clusters as an example. no way to display dynamic config which we actually apply

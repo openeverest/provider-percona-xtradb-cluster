@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	monitoringConfigRefFieldPath = "spec.components.monitoring.parameters.monitoringConfigName"
+	monitoringConfigRefFieldPath = "spec.components.monitoring.customSpec.monitoringConfigName"
 	monitoringConfigAPIKeyKey    = "apiKey"
 	pxcPMMServerKey              = "pmmserverkey"
 	pxcPMMServerToken            = "pmmservertoken"
 )
 
-type pmmParameters struct {
+type pmmCustomSpec struct {
 	MonitoringConfigName *string `json:"monitoringConfigName,omitempty"`
 }
 
@@ -88,13 +88,13 @@ func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBClus
 }
 
 func monitoringConfigNameFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
-	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
+	if component.CustomSpec == nil || len(component.CustomSpec.Raw) == 0 {
 		return "", nil
 	}
 
-	cfg := &pmmParameters{}
-	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
-		return "", fmt.Errorf("decode monitoring component parameters: %w", err)
+	cfg := &pmmCustomSpec{}
+	if err := json.Unmarshal(component.CustomSpec.Raw, cfg); err != nil {
+		return "", fmt.Errorf("decode monitoring component customSpec: %w", err)
 	}
 	if cfg.MonitoringConfigName == nil {
 		return "", nil

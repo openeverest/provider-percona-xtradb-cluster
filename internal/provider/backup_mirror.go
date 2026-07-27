@@ -232,8 +232,8 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			backupSpec.PITR.StorageName = storage.StorageRef.Name
 
 			var rawCfg []byte
-			if storage.PITR.Parameters != nil {
-				rawCfg = storage.PITR.Parameters.Raw
+			if storage.PITR.Config != nil {
+				rawCfg = storage.PITR.Config.Raw
 			}
 			cfg, err := decodeAndValidatePITRConfig(storage.StorageRef.Name, rawCfg)
 			if err != nil {

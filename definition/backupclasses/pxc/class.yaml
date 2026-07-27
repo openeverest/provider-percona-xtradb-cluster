@@ -8,17 +8,16 @@
 #   providerManaged.supportsPITR: advertise PITR capability to Restore validation.
 #   providerManaged.limits: caps the runtime enforces against Instance.spec.backup.
 #     maxStorages, maxPITREnabledStorages, maxSchedulesPerStorage — unset means unlimited.
-#   providerManaged.pitrParametersSchema.openAPIV3Schema: Go type name (in this
-#     package) describing per-storage PITR parameters. Resolved to an OpenAPI
-#     schema at generation time.
-#   parametersSchema.openAPIV3Schema / restoreParametersSchema.openAPIV3Schema:
-#     Go type names describing backup-time and restore-time parameters respectively.
+#   providerManaged.pitrConfigSchema: Go type name (in this package) describing
+#     per-storage PITR custom config. Resolved to an OpenAPI schema at generation time.
+#   config.openAPIV3Schema / restoreConfig.openAPIV3Schema: Go type names
+#     describing backup-time and restore-time custom config respectively.
 #
 # Co-located files:
 #   ui.yaml  — free-form UI rendering hints, inlined verbatim under spec.uiSchema.
 #   types.go — Go types referenced above; OpenAPI-extracted by provider-sdk generate.
 
-parametersSchema:
+config:
     openAPIV3Schema: PxcBackupConfig
 description:  |
   BackupClass for MySQL based on Percona XtraDB Cluster provider. Backups are managed
@@ -28,10 +27,9 @@ executionMode: ProviderManaged
 providerManaged:
     limits:
       maxPITREnabledStorages: 1
-    pitrParametersSchema:
-        openAPIV3Schema: PxcPITRConfig
+    pitrConfigSchema: PxcPITRConfig
     supportsPITR: true
-restoreParametersSchema:
+restoreConfig:
     openAPIV3Schema: PxcRestoreConfig
 supportedProviders:
     - percona-xtradb-cluster

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package cluster contains parameters types for the PXC cluster topology.
+// Package cluster contains custom spec types for the PXC cluster topology.
 //
 // +k8s:openapi-gen=true
 package cluster
 
-// ClusterTopologyParameters is intentionally empty.
+// ClusterTopologyConfig is intentionally empty.
 // Proxy settings are configured through spec.components.proxy.
-type ClusterTopologyParameters struct{}
+type ClusterTopologyConfig struct{}
