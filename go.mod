@@ -3,7 +3,7 @@ module github.com/openeverest/provider-percona-xtradb-cluster
 go 1.26.2
 
 require (
-	github.com/openeverest/openeverest/v2 v2.0.0-dev.1.0.20260721150452-3ea180918896
+	github.com/openeverest/openeverest/v2 v2.0.0-dev.1.0.20260730075829-2f7662c55ebf
 	github.com/percona/percona-xtradb-cluster-operator v1.19.1
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.36.0
