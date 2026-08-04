@@ -501,6 +501,14 @@ func NewPXCProviderInterface() *PXCProvider {
 				}),
 				controller.ResourceVersionChangedPredicate,
 			),
+			// Watch operator backups so the PITR window published by
+			// BackupStorageStatuses refreshes as the operator stamps
+			// latestRestorableTime and the PITRReady condition on them.
+			// Operator backups are not owned by the Instance, so map them to
+			// the parent via spec.pxcCluster.
+			controller.WatchExternal(&pxcv1.PerconaXtraDBClusterBackup{},
+				handler.EnqueueRequestsFromMapFunc(enqueueOperatorBackupInstance()),
+			),
 		},
 	}
 

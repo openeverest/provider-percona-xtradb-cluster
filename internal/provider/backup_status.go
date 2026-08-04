@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -8,7 +9,9 @@ import (
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // Reasons published on InstanceBackupStoragePITRStatus.
@@ -42,6 +45,24 @@ func (p *PXCProvider) BackupStorageStatuses(c *controller.Context) ([]corev1alph
 		out = append(out, entry)
 	}
 	return out, nil
+}
+
+// enqueueOperatorBackupInstance maps a PerconaXtraDBClusterBackup event to a
+// reconcile request for the Instance named by spec.pxcCluster, so that status
+// the operator stamps on its backups reaches instance.status.backup.storages.
+func enqueueOperatorBackupInstance() func(ctx context.Context, obj client.Object) []reconcile.Request {
+	return func(_ context.Context, obj client.Object) []reconcile.Request {
+		b, ok := obj.(*pxcv1.PerconaXtraDBClusterBackup)
+		if !ok || b.Spec.PXCCluster == "" {
+			return nil
+		}
+		return []reconcile.Request{{
+			NamespacedName: types.NamespacedName{
+				Namespace: b.Namespace,
+				Name:      b.Spec.PXCCluster,
+			},
+		}}
+	}
 }
 
 // collectStorageBackups returns the Succeeded backups of one cluster on one
