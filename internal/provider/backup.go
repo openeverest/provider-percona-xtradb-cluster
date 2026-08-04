@@ -91,17 +91,19 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.InstanceRef.Name, err)
 		}
 
-		if pxc.Spec.Backup == nil || pxc.Spec.Backup.Storages == nil {
-			return controller.BackupExecutionStatus{
-				State:             backupv1alpha1.BackupStateFailed,
-				Message:           "No backup storages configured on the cluster",
-				OperatorBackupRef: opRef,
-			}, nil
+		// The Instance reconciler is what registers storages on the
+		// PerconaXtraDBCluster CR, so a Backup created before (or concurrently
+		// with) that write legitimately observes them missing. Wait instead of
+		// failing: BackupStateFailed is terminal in the runtime, which would
+		// turn a startup race into a permanently failed backup.
+		storages := map[string]*pxcv1.BackupStorageSpec{}
+		if pxc.Spec.Backup != nil {
+			storages = pxc.Spec.Backup.Storages
 		}
-		if _, ok := pxc.Spec.Backup.Storages[backup.Spec.StorageRef.Name]; !ok {
+		if _, ok := storages[backup.Spec.StorageRef.Name]; !ok {
 			return controller.BackupExecutionStatus{
-				State:             backupv1alpha1.BackupStateFailed,
-				Message:           fmt.Sprintf("Storage %q is not configured on the cluster", backup.Spec.StorageRef.Name),
+				State:             backupv1alpha1.BackupStatePending,
+				Message:           fmt.Sprintf("Waiting for storage %q to be registered on PXC cluster", backup.Spec.StorageRef.Name),
 				OperatorBackupRef: opRef,
 			}, nil
 		}
