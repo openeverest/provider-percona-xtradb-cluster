@@ -11,6 +11,7 @@ import (
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -603,6 +604,23 @@ func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName 
 	}
 
 	return false, nil
+}
+
+// enqueueRestoreInstance maps a Restore event to a reconcile request for the
+// Instance it targets, so the Instance phase tracks the restore's lifecycle.
+func enqueueRestoreInstance() func(ctx context.Context, obj client.Object) []reconcile.Request {
+	return func(_ context.Context, obj client.Object) []reconcile.Request {
+		r, ok := obj.(*backupv1alpha1.Restore)
+		if !ok || r.Spec.InstanceRef.Name == "" {
+			return nil
+		}
+		return []reconcile.Request{{
+			NamespacedName: types.NamespacedName{
+				Namespace: r.Namespace,
+				Name:      r.Spec.InstanceRef.Name,
+			},
+		}}
+	}
 }
 
 // RestoreWatches implements controller.RestoreWatcher. Register watches so operator

@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"strings"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -397,15 +398,22 @@ func StatusPXC(c *controller.Context) (controller.Status, error) {
 	if ds := c.GetDataSourceStatus(); ds != nil && !ds.Done {
 		return controller.Restoring(ds.Message), nil
 	}
+
+	// A restore drives the engine through paused, starting and momentarily
+	// ready states, so reading the phase off the engine alone makes the Instance
+	// flap between Restoring, Provisioning and Ready while one is in flight.
+	// The Restore CR reaching a terminal state is what ends the restore, so let
+	// it own the phase for as long as it is running.
+	activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
+	if err != nil {
+		return controller.Status{}, err
+	}
+	if activeRestore {
+		return controller.Restoring("Restore is running"), nil
+	}
+
 	switch pxc.Status.Status {
 	case pxcv1.AppStatePaused:
-		activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
-		if err != nil {
-			return controller.Failed("Failed to list Restore resources: " + err.Error()), err
-		}
-		if activeRestore {
-			return controller.Restoring("Restore is running"), nil
-		}
 		return controller.Provisioning("Cluster is paused"), nil
 	case pxcv1.AppStateReady:
 		details, err := buildConnectionDetails(c, pxc)
@@ -508,6 +516,13 @@ func NewPXCProviderInterface() *PXCProvider {
 			// the parent via spec.pxcCluster.
 			controller.WatchExternal(&pxcv1.PerconaXtraDBClusterBackup{},
 				handler.EnqueueRequestsFromMapFunc(enqueueOperatorBackupInstance()),
+			),
+			// Watch Restores so the Instance leaves the Restoring phase as soon
+			// as one reaches a terminal state. The engine usually reports ready
+			// before the Restore CR does, so without this the Instance would sit
+			// in Restoring until an unrelated event arrived.
+			controller.WatchExternal(&backupv1alpha1.Restore{},
+				handler.EnqueueRequestsFromMapFunc(enqueueRestoreInstance()),
 			),
 		},
 	}
