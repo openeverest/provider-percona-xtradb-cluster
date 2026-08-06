@@ -17,7 +17,7 @@ pitr:
     - timeoutSeconds
   components:
     timeBetweenUploads:
-      path: spec.backup.storages[].pitr.parameters.timeBetweenUploads
+      path: parameters.timeBetweenUploads
       uiType: number
       fieldParams:
         label: Upload interval (seconds)
@@ -25,7 +25,7 @@ pitr:
       validation:
         min: 1
     timeoutSeconds:
-      path: spec.backup.storages[].pitr.parameters.timeoutSeconds
+      path: parameters.timeoutSeconds
       uiType: number
       fieldParams:
         label: Upload timeout (seconds)
