@@ -54,12 +54,15 @@ This provider has **not been released yet** — the table describes `main`.
 
 ## Capabilities
 
+What you can do to a running instance through the `Instance` API. Upgrading the
+provider itself is covered under [Installation](#installation).
+
 | Capability | Status | Notes |
 |---|---|---|
 | Provisioning | ✅ | |
 | Horizontal scaling | ✅ | `spec.components.<name>.replicas` |
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.<name>.resources` |
-| Version upgrades | ✅ | change `spec.version`; see [Versions](#versions) |
+| Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
 | Monitoring | ✅ | PMM, via the optional `monitoring` component |
 | TLS | ⚠️ | the operator provisions certificates, but the connection string reported on the Instance requests `tls=false` |
@@ -129,9 +132,14 @@ spec:
           memory: 2G
       storage:
         size: 10Gi
+    proxy:
+      type: haproxy
+      replicas: 2
 ```
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
+`proxy` is required in the `cluster` topology, with an explicit `type` (`haproxy` or
+`proxysql`) and at least one replica — unlike `monitoring`, it is not defaulted.
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
 More examples live in [examples/](examples/).
 
