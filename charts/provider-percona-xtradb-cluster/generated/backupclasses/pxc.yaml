@@ -5,28 +5,29 @@ kind: BackupClass
 metadata:
   name: pxc
 spec:
-  config:
-    openAPIV3Schema:
-      type: object
   description: |
     BackupClass for MySQL based on Percona XtraDB Cluster provider. Backups are managed
     PXC operator; OpenEverest does not run any side-car Job for this class.
   displayName: Percona Backup for MySQL based on Percona XtraDB Cluster
   executionMode: ProviderManaged
+  parametersSchema:
+    openAPIV3Schema:
+      type: object
   providerManaged:
     limits:
       maxPITREnabledStorages: 1
-    pitrConfigSchema:
-      properties:
-        timeBetweenUploads:
-          format: double
-          type: number
-        timeoutSeconds:
-          format: double
-          type: number
-      type: object
+    pitrParametersSchema:
+      openAPIV3Schema:
+        properties:
+          timeBetweenUploads:
+            format: double
+            type: number
+          timeoutSeconds:
+            format: double
+            type: number
+        type: object
     supportsPITR: true
-  restoreConfig:
+  restoreParametersSchema:
     openAPIV3Schema:
       type: object
   supportedProviders:
@@ -42,7 +43,7 @@ spec:
           fieldParams:
             defaultValue: 60
             label: Upload interval (seconds)
-          path: spec.backup.storages[].pitr.config.timeBetweenUploads
+          path: parameters.timeBetweenUploads
           uiType: number
           validation:
             min: 1
@@ -50,7 +51,7 @@ spec:
           fieldParams:
             defaultValue: 3600
             label: Upload timeout (seconds)
-          path: spec.backup.storages[].pitr.config.timeoutSeconds
+          path: parameters.timeoutSeconds
           uiType: number
           validation:
             min: 1
