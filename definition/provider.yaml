@@ -9,13 +9,15 @@ name: percona-xtradb-cluster
 
 # Components map logical component names to their type.
 # The type must match a key in versions.yaml's componentTypes.
-# Omit 'schema' for components that have no custom configuration fields.
+# Omit 'parametersSchema' for components that have no structured parameters.
 components:
   engine:
     type: pxc
+    parametersSchema: PXCParameters
   proxy:
     type: haproxy
   backup:
     type: backup
   monitoring:
     type: pmm
+    parametersSchema: PMMParameters

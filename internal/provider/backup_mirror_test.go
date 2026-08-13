@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	common "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
@@ -22,9 +23,9 @@ func TestMirrorScheduledBackupByLabels(t *testing.T) {
 	instance := &corev1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: "inst-qaf", Namespace: "my-special-place"},
 		Spec: corev1alpha1.InstanceSpec{
-			Provider: "percona-xtradb-cluster",
+			ProviderRef: common.ObjectRef{Name: "percona-xtradb-cluster"},
 			Backup: &corev1alpha1.InstanceBackupSpec{
-				ClassRef: corev1alpha1.BackupClassReference{Name: "pxc"},
+				ClassRef: common.ObjectRef{Name: "pxc"},
 			},
 		},
 	}
@@ -51,7 +52,7 @@ func TestMirrorScheduledBackupByLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, mirror)
 	require.Equal(t, "nightly", mirror.Spec.ScheduleName)
-	require.Equal(t, "bs-msp-1", mirror.Spec.StorageName)
+	require.Equal(t, "bs-msp-1", mirror.Spec.StorageRef.Name)
 	require.Len(t, mirror.OwnerReferences, 1)
 	owner := mirror.OwnerReferences[0]
 	require.Equal(t, pxcv1.SchemeGroupVersion.String(), owner.APIVersion)
@@ -69,9 +70,9 @@ func TestMirrorSkipsOnDemandBackup(t *testing.T) {
 	instance := &corev1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: "inst-qaf", Namespace: "my-special-place"},
 		Spec: corev1alpha1.InstanceSpec{
-			Provider: "percona-xtradb-cluster",
+			ProviderRef: common.ObjectRef{Name: "percona-xtradb-cluster"},
 			Backup: &corev1alpha1.InstanceBackupSpec{
-				ClassRef: corev1alpha1.BackupClassReference{Name: "pxc"},
+				ClassRef: common.ObjectRef{Name: "pxc"},
 			},
 		},
 	}
@@ -99,8 +100,8 @@ func TestMirrorUsesSchedulerNameWhenProvided(t *testing.T) {
 	instance := &corev1alpha1.Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: "inst-qaf", Namespace: "my-special-place"},
 		Spec: corev1alpha1.InstanceSpec{
-			Provider: "percona-xtradb-cluster",
-			Backup:   &corev1alpha1.InstanceBackupSpec{ClassRef: corev1alpha1.BackupClassReference{Name: "pxc"}},
+			ProviderRef: common.ObjectRef{Name: "percona-xtradb-cluster"},
+			Backup:      &corev1alpha1.InstanceBackupSpec{ClassRef: common.ObjectRef{Name: "pxc"}},
 		},
 	}
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(instance).Build()

@@ -3,13 +3,15 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	common "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -42,18 +44,18 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 	if backup.Labels == nil {
 		backup.Labels = map[string]string{}
 	}
-	if backup.Labels[instanceNameLabelKey] != backup.Spec.InstanceName {
+	if backup.Labels[instanceNameLabelKey] != backup.Spec.InstanceRef.Name {
 		origBackupCR := backup.DeepCopy()
-		backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceName
+		backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceRef.Name
 		if err := c.Client().Patch(c.Context(), backup, client.MergeFrom(origBackupCR)); err != nil {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("patch Backup %q labels: %w", backup.Name, err)
 		}
 	}
 
-	opRef := &corev1.TypedLocalObjectReference{
-		APIGroup: ptrTo(pxcv1.SchemeGroupVersion.Group),
-		Kind:     "PerconaXtraDBClusterBackup",
-		Name:     backup.Name,
+	opRef := &common.TypedObjectRef{
+		Group: pxcv1.SchemeGroupVersion.Group,
+		Kind:  "PerconaXtraDBClusterBackup",
+		Name:  backup.Name,
 	}
 	managedByRuntime := backup.Spec.ScheduleName == ""
 	ensureBackupControllerReference := func(opBackup *pxcv1.PerconaXtraDBClusterBackup) error {
@@ -79,7 +81,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		}
 
 		pxc := &pxcv1.PerconaXtraDBCluster{}
-		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Spec.InstanceName}, pxc); err != nil {
+		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Spec.InstanceRef.Name}, pxc); err != nil {
 			if apierrors.IsNotFound(err) {
 				return controller.BackupExecutionStatus{
 					State:             backupv1alpha1.BackupStatePending,
@@ -87,20 +89,22 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 					OperatorBackupRef: opRef,
 				}, nil
 			}
-			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.InstanceName, err)
+			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.InstanceRef.Name, err)
 		}
 
-		if pxc.Spec.Backup == nil || pxc.Spec.Backup.Storages == nil {
-			return controller.BackupExecutionStatus{
-				State:             backupv1alpha1.BackupStateFailed,
-				Message:           "No backup storages configured on the cluster",
-				OperatorBackupRef: opRef,
-			}, nil
+		// The Instance reconciler is what registers storages on the
+		// PerconaXtraDBCluster CR, so a Backup created before (or concurrently
+		// with) that write legitimately observes them missing. Wait instead of
+		// failing: BackupStateFailed is terminal in the runtime, which would
+		// turn a startup race into a permanently failed backup.
+		storages := map[string]*pxcv1.BackupStorageSpec{}
+		if pxc.Spec.Backup != nil {
+			storages = pxc.Spec.Backup.Storages
 		}
-		if _, ok := pxc.Spec.Backup.Storages[backup.Spec.StorageName]; !ok {
+		if _, ok := storages[backup.Spec.StorageRef.Name]; !ok {
 			return controller.BackupExecutionStatus{
-				State:             backupv1alpha1.BackupStateFailed,
-				Message:           fmt.Sprintf("Storage %q is not configured on the cluster", backup.Spec.StorageName),
+				State:             backupv1alpha1.BackupStatePending,
+				Message:           fmt.Sprintf("Waiting for storage %q to be registered on PXC cluster", backup.Spec.StorageRef.Name),
 				OperatorBackupRef: opRef,
 			}, nil
 		}
@@ -111,8 +115,8 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				Namespace: backup.Namespace,
 			},
 			Spec: pxcv1.PXCBackupSpec{
-				PXCCluster:  backup.Spec.InstanceName,
-				StorageName: backup.Spec.StorageName,
+				PXCCluster:  backup.Spec.InstanceRef.Name,
+				StorageName: backup.Spec.StorageRef.Name,
 			},
 		}
 		if !c.ShouldRetainBackupData(backup) {
@@ -139,9 +143,9 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				immutableErr,
 				"failed to reconcile backup CR",
 				"backup", backup.Name,
-				"requestedInstanceName", backup.Spec.InstanceName,
+				"requestedInstanceName", backup.Spec.InstanceRef.Name,
 				"existingInstanceName", opBackup.Spec.PXCCluster,
-				"requestedStorageName", backup.Spec.StorageName,
+				"requestedStorageName", backup.Spec.StorageRef.Name,
 				"existingStorageName", opBackup.Spec.StorageName,
 				"reason", immutableChangeMsg,
 			)
@@ -200,61 +204,21 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	if restore.Labels == nil {
 		restore.Labels = map[string]string{}
 	}
-	if restore.Labels[instanceNameLabelKey] != restore.Spec.InstanceName {
+	if restore.Labels[instanceNameLabelKey] != restore.Spec.InstanceRef.Name {
 		origRestoreCR := restore.DeepCopy()
-		restore.Labels[instanceNameLabelKey] = restore.Spec.InstanceName
+		restore.Labels[instanceNameLabelKey] = restore.Spec.InstanceRef.Name
 		if err := c.Client().Patch(c.Context(), restore, client.MergeFrom(origRestoreCR)); err != nil {
 			return controller.RestoreExecutionStatus{}, fmt.Errorf("patch Restore %q labels: %w", restore.Name, err)
 		}
 	}
 
-	opRef := &corev1.TypedLocalObjectReference{
-		APIGroup: ptrTo(pxcv1.SchemeGroupVersion.Group),
-		Kind:     "PerconaXtraDBClusterRestore",
-		Name:     restore.Name,
+	opRef := &common.TypedObjectRef{
+		Group: pxcv1.SchemeGroupVersion.Group,
+		Kind:  "PerconaXtraDBClusterRestore",
+		Name:  restore.Name,
 	}
 
-	if restore.Spec.DataSource.Backup == nil || restore.Spec.DataSource.Backup.BackupName == "" {
-		return controller.RestoreExecutionStatus{
-			State:              backupv1alpha1.RestoreStateFailed,
-			Message:            "Restore dataSource.backup.backupName is required",
-			OperatorRestoreRef: opRef,
-		}, nil
-	}
-
-	sourceBackup := &backupv1alpha1.Backup{}
-	if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: restore.Spec.DataSource.Backup.BackupName}, sourceBackup); err != nil {
-		if apierrors.IsNotFound(err) {
-			return controller.RestoreExecutionStatus{
-				State:              backupv1alpha1.RestoreStatePending,
-				Message:            "Waiting for source Backup",
-				OperatorRestoreRef: opRef,
-			}, nil
-		}
-		return controller.RestoreExecutionStatus{}, fmt.Errorf("get source Backup %q: %w", restore.Spec.DataSource.Backup.BackupName, err)
-	}
-
-	if sourceBackup.Status.State == backupv1alpha1.BackupStateFailed {
-		return controller.RestoreExecutionStatus{
-			State:              backupv1alpha1.RestoreStateFailed,
-			Message:            "Source Backup failed; cannot restore",
-			OperatorRestoreRef: opRef,
-		}, nil
-	}
-
-	if restore.Spec.DataSource.Backup.PITR != nil {
-		if sourceBackup.Status.State != backupv1alpha1.BackupStateSucceeded {
-			return controller.RestoreExecutionStatus{
-				State:              backupv1alpha1.RestoreStatePending,
-				Message:            "Waiting for source Backup to complete",
-				OperatorRestoreRef: opRef,
-			}, nil
-		}
-	}
-
-	opBackupName := sourceBackup.Name
-
-	desiredPITR, pending, err := desiredOperatorPITRSpec(c, restore, opBackupName, opRef)
+	opBackupName, desiredPITR, pending, err := resolveRestoreSource(c, restore, opRef)
 	if err != nil {
 		return controller.RestoreExecutionStatus{}, err
 	}
@@ -272,7 +236,7 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		opRestore = &pxcv1.PerconaXtraDBClusterRestore{
 			ObjectMeta: metav1.ObjectMeta{Name: restore.Name, Namespace: restore.Namespace},
 			Spec: pxcv1.PerconaXtraDBClusterRestoreSpec{
-				PXCCluster: restore.Spec.InstanceName,
+				PXCCluster: restore.Spec.InstanceRef.Name,
 				BackupName: opBackupName,
 				PITR:       desiredPITR,
 			},
@@ -330,35 +294,123 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 	return out, nil
 }
 
-func desiredOperatorPITRSpec(
+// resolveRestoreSource translates the Restore's data source into the operator
+// inputs: the name of the PerconaXtraDBClusterBackup to restore from, and the
+// PITR block when rolling a binlog stream forward.
+//
+// A non-nil RestoreExecutionStatus means the source is not usable yet (or at
+// all) and the caller should surface that status verbatim.
+func resolveRestoreSource(
 	c *controller.Context,
 	restore *backupv1alpha1.Restore,
-	opBackupName string,
-	opRef *corev1.TypedLocalObjectReference,
-) (*pxcv1.PITR, *controller.RestoreExecutionStatus, error) {
-	pitr := restore.Spec.DataSource.Backup.PITR
-	if pitr == nil {
-		return nil, nil, nil
-	}
-
-	if pitr.Type == backupv1alpha1.PITRTypeDate && pitr.Date == nil {
-		return nil, &controller.RestoreExecutionStatus{
+	opRef *common.TypedObjectRef,
+) (string, *pxcv1.PITR, *controller.RestoreExecutionStatus, error) {
+	switch restore.Spec.DataSource.Type {
+	case backupv1alpha1.DataSourceTypeBackup:
+		name, pending, err := resolveBackupSource(c, restore, opRef)
+		return name, nil, pending, err
+	case backupv1alpha1.DataSourceTypePointInTime:
+		return resolvePointInTimeSource(c, restore, opRef)
+	default:
+		return "", nil, &controller.RestoreExecutionStatus{
 			State:              backupv1alpha1.RestoreStateFailed,
-			Message:            "Restore dataSource.backup.pitr.date is required when pitr.type is \"date\"",
+			Message:            fmt.Sprintf("Unsupported dataSource type %q", restore.Spec.DataSource.Type),
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+}
+
+// resolveBackupSource restores the state captured by a named Backup CR. The
+// Backup mirrors an operator backup of the same name.
+func resolveBackupSource(
+	c *controller.Context,
+	restore *backupv1alpha1.Restore,
+	opRef *common.TypedObjectRef,
+) (string, *controller.RestoreExecutionStatus, error) {
+	ref := restore.Spec.DataSource.Backup
+	if ref == nil || ref.BackupRef.Name == "" {
+		return "", &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            "Restore dataSource.backup.backupRef.name is required",
 			OperatorRestoreRef: opRef,
 		}, nil
 	}
 
-	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
-	if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: opBackupName}, opBackup); err != nil {
+	sourceBackup := &backupv1alpha1.Backup{}
+	if err := c.Client().Get(c.Context(),
+		client.ObjectKey{Namespace: restore.Namespace, Name: ref.BackupRef.Name}, sourceBackup); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, &controller.RestoreExecutionStatus{
+			return "", &controller.RestoreExecutionStatus{
+				State:              backupv1alpha1.RestoreStatePending,
+				Message:            "Waiting for source Backup",
+				OperatorRestoreRef: opRef,
+			}, nil
+		}
+		return "", nil, fmt.Errorf("get source Backup %q: %w", ref.BackupRef.Name, err)
+	}
+
+	if sourceBackup.Status.State == backupv1alpha1.BackupStateFailed {
+		return "", &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            "Source Backup failed; cannot restore",
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+
+	return sourceBackup.Name, nil, nil
+}
+
+// resolvePointInTimeSource rolls a binlog stream forward to a recovery target.
+//
+// The client names the stream (source Instance + storage) and the target, never
+// a backup: PXC needs a base backup to restore before replaying binlogs, and
+// selecting it is engine knowledge. The base is the newest Succeeded backup on
+// the stream that completed at or before the target.
+func resolvePointInTimeSource(
+	c *controller.Context,
+	restore *backupv1alpha1.Restore,
+	opRef *common.TypedObjectRef,
+) (string, *pxcv1.PITR, *controller.RestoreExecutionStatus, error) {
+	pitr := restore.Spec.DataSource.PointInTime
+	if pitr == nil {
+		return "", nil, &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            "Restore dataSource.pointInTime is required when type is \"PointInTime\"",
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+	// A schema rule already enforces this; repeated for paths that bypass
+	// admission.
+	if pitr.RecoveryTarget == backupv1alpha1.RecoveryTargetDate && pitr.Date == nil {
+		return "", nil, &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            "Restore dataSource.pointInTime.date is required when recoveryTarget is \"date\"",
+			OperatorRestoreRef: opRef,
+		}, nil
+	}
+
+	sourceInstance := restore.Spec.InstanceRef.Name
+	if pitr.Source.InstanceRef != nil {
+		sourceInstance = pitr.Source.InstanceRef.Name
+	}
+	storageName := pitr.Source.StorageRef.Name
+
+	base, pending := selectPITRBaseBackup(c, restore.Namespace, sourceInstance, storageName, pitr, opRef)
+	if pending != nil {
+		return "", nil, pending, nil
+	}
+
+	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
+	if err := c.Client().Get(c.Context(),
+		client.ObjectKey{Namespace: restore.Namespace, Name: base}, opBackup); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil, &controller.RestoreExecutionStatus{
 				State:              backupv1alpha1.RestoreStatePending,
 				Message:            "Waiting for operator backup",
 				OperatorRestoreRef: opRef,
 			}, nil
 		}
-		return nil, nil, fmt.Errorf("get operator backup %q: %w", opBackupName, err)
+		return "", nil, nil, fmt.Errorf("get operator backup %q: %w", base, err)
 	}
 
 	if opBackup.Status.State == pxcv1.BackupFailed {
@@ -366,14 +418,14 @@ func desiredOperatorPITRSpec(
 		if opBackup.Status.Error != "" {
 			message = opBackup.Status.Error
 		}
-		return nil, &controller.RestoreExecutionStatus{
+		return "", nil, &controller.RestoreExecutionStatus{
 			State:              backupv1alpha1.RestoreStateFailed,
 			Message:            message,
 			OperatorRestoreRef: opRef,
 		}, nil
 	}
 	if opBackup.Status.State != pxcv1.BackupSucceeded {
-		return nil, &controller.RestoreExecutionStatus{
+		return "", nil, &controller.RestoreExecutionStatus{
 			State:              backupv1alpha1.RestoreStatePending,
 			Message:            "Waiting for operator backup to complete",
 			OperatorRestoreRef: opRef,
@@ -381,14 +433,71 @@ func desiredOperatorPITRSpec(
 	}
 
 	out := &pxcv1.PITR{
+		// The binlog stream lives alongside the base backup: both are keyed by
+		// the storage the client named, so the backup's resolved status carries
+		// the right storage configuration.
 		BackupSource: &opBackup.Status,
-		Type:         string(pitr.Type),
+		Type:         string(pitr.RecoveryTarget),
 	}
 	if pitr.Date != nil {
+		// PXC parses this as node-local time, so normalise to UTC first.
 		out.Date = pitr.Date.UTC().Format("2006-01-02 15:04:05")
 	}
 
-	return out, nil, nil
+	return base, out, nil, nil
+}
+
+// selectPITRBaseBackup returns the name of the newest Succeeded Backup on the
+// given stream that completed at or before the recovery target. Binlogs are
+// replayed forward from it, so a base completed *after* the target cannot be
+// used.
+func selectPITRBaseBackup(
+	c *controller.Context,
+	namespace, instanceName, storageName string,
+	pitr *backupv1alpha1.DataSourcePointInTime,
+	opRef *common.TypedObjectRef,
+) (string, *controller.RestoreExecutionStatus) {
+	list := &backupv1alpha1.BackupList{}
+	if err := c.Client().List(c.Context(), list,
+		client.InNamespace(namespace),
+		client.MatchingFields{controller.IndexBackupInstanceName: instanceName},
+	); err != nil {
+		return "", &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStatePending,
+			Message:            fmt.Sprintf("Listing backups for instance %q: %v", instanceName, err),
+			OperatorRestoreRef: opRef,
+		}
+	}
+
+	var best *backupv1alpha1.Backup
+	for i := range list.Items {
+		b := &list.Items[i]
+		if b.Spec.StorageRef.Name != storageName ||
+			b.Status.State != backupv1alpha1.BackupStateSucceeded ||
+			b.Status.CompletedAt == nil {
+			continue
+		}
+		if pitr.Date != nil && b.Status.CompletedAt.After(pitr.Date.Time) {
+			continue
+		}
+		if best == nil || b.Status.CompletedAt.After(best.Status.CompletedAt.Time) {
+			best = b
+		}
+	}
+
+	if best == nil {
+		msg := fmt.Sprintf("No Succeeded backup of instance %q on storage %q to recover from", instanceName, storageName)
+		if pitr.Date != nil {
+			msg = fmt.Sprintf("%s at or before %s", msg, pitr.Date.UTC().Format(time.RFC3339))
+		}
+		return "", &controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStatePending,
+			Message:            msg,
+			OperatorRestoreRef: opRef,
+		}
+	}
+
+	return best.Name, nil
 }
 
 // CleanupBackup deletes the operator backup resource. For DeletionPolicy: Retain,
@@ -483,7 +592,7 @@ func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName 
 
 	for i := range restoreList.Items {
 		r := restoreList.Items[i]
-		if r.Spec.InstanceName != instanceName || !r.DeletionTimestamp.IsZero() {
+		if r.Spec.InstanceRef.Name != instanceName || !r.DeletionTimestamp.IsZero() {
 			continue
 		}
 		switch r.Status.State {
@@ -495,6 +604,23 @@ func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName 
 	}
 
 	return false, nil
+}
+
+// enqueueRestoreInstance maps a Restore event to a reconcile request for the
+// Instance it targets, so the Instance phase tracks the restore's lifecycle.
+func enqueueRestoreInstance() func(ctx context.Context, obj client.Object) []reconcile.Request {
+	return func(_ context.Context, obj client.Object) []reconcile.Request {
+		r, ok := obj.(*backupv1alpha1.Restore)
+		if !ok || r.Spec.InstanceRef.Name == "" {
+			return nil
+		}
+		return []reconcile.Request{{
+			NamespacedName: types.NamespacedName{
+				Namespace: r.Namespace,
+				Name:      r.Spec.InstanceRef.Name,
+			},
+		}}
+	}
 }
 
 // RestoreWatches implements controller.RestoreWatcher. Register watches so operator
@@ -517,17 +643,17 @@ func ptrTo[T any](v T) *T {
 }
 
 func immutableBackupSpecChangeMessage(opBackup *pxcv1.PerconaXtraDBClusterBackup, backup *backupv1alpha1.Backup) string {
-	if backup.Spec.InstanceName != opBackup.Spec.PXCCluster {
+	if backup.Spec.InstanceRef.Name != opBackup.Spec.PXCCluster {
 		return fmt.Sprintf(
-			"cannot change backup spec.instanceName after creation (requested %q, existing %q)",
-			backup.Spec.InstanceName,
+			"cannot change backup spec.instanceRef.name after creation (requested %q, existing %q)",
+			backup.Spec.InstanceRef.Name,
 			opBackup.Spec.PXCCluster,
 		)
 	}
-	if backup.Spec.StorageName != opBackup.Spec.StorageName {
+	if backup.Spec.StorageRef.Name != opBackup.Spec.StorageName {
 		return fmt.Sprintf(
-			"cannot change backup spec.storageName after creation (requested %q, existing %q)",
-			backup.Spec.StorageName,
+			"cannot change backup spec.storageRef.name after creation (requested %q, existing %q)",
+			backup.Spec.StorageRef.Name,
 			opBackup.Spec.StorageName,
 		)
 	}

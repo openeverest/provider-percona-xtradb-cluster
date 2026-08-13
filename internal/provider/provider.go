@@ -21,13 +21,17 @@ import (
 	"net/url"
 	"strings"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -190,10 +194,10 @@ func ValidatePXC(c *controller.Context) error {
 				pitrEnabled++
 
 				var rawCfg []byte
-				if s.PITR.Config != nil {
-					rawCfg = s.PITR.Config.Raw
+				if s.PITR.Parameters != nil {
+					rawCfg = s.PITR.Parameters.Raw
 				}
-				if _, err := decodeAndValidatePITRConfig(s.Name, rawCfg); err != nil {
+				if _, err := decodeAndValidatePITRConfig(s.StorageRef.Name, rawCfg); err != nil {
 					return err
 				}
 			}
@@ -281,7 +285,13 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	if engine.Config == nil {
+	// The engine configuration file is carried inside the engine component's
+	// parameters; `configuration` is the conventional property name for it.
+	var engineParams components.PXCParameters
+	c.TryDecodeComponentParameters(engine, &engineParams)
+	if engineParams.Configuration != "" {
+		pxc.Spec.PXC.Configuration = engineParams.Configuration
+	} else {
 		switch *engine.Replicas {
 		case 1:
 			pxc.Spec.PXC.Configuration = pxcConfigSizeSmall
@@ -343,15 +353,43 @@ func SyncPXC(c *controller.Context) error {
 
 	pxc.Spec.SecretsName = usersSecretName
 
+	// When seeding from a DataSource, the target cluster's users secret must
+	// contain the same credentials as the source cluster: the restored datadir
+	// carries the source cluster's mysql user table, so a freshly generated
+	// secret would leave the operator, proxy and monitoring users unable to
+	// authenticate. Copy BEFORE applying the PXC CR so the operator never
+	// initializes the secret with random passwords.
+	if c.Instance().Spec.DataSource != nil {
+		if err := ensureDataSourceCredentials(c, usersSecretName); err != nil {
+			return err
+		}
+	}
+
 	if err := c.Apply(pxc); err != nil {
 		return err
 	}
 
+	// Initial seeding from .spec.dataSource: gated on the engine being Ready.
+	// The PXC restore job mounts the datadir PVC of the first engine pod and
+	// reads the cluster's users secret, and a failed validation is terminal for
+	// the PerconaXtraDBClusterRestore, so issuing it before the StatefulSet
+	// exists fails the restore permanently. While the gate is not satisfied the
+	// helper is not invoked and StatusPXC reports Restoring so callers know the
+	// Instance is still being seeded.
 	if c.Instance().Spec.DataSource != nil {
 		current := &pxcv1.PerconaXtraDBCluster{}
 		if err := c.Get(current, c.Name()); err != nil {
 			// Cluster has not been created yet (first Sync). The next
 			// reconcile after the PXC CR appears will re-enter this branch.
+			return nil
+		}
+		if current.Status.Status != pxcv1.AppStateReady {
+			c.SetDataSourceStatus(controller.DataSourceStatus{
+				Done:    false,
+				State:   controller.DataSourceStateWaiting,
+				Reason:  corev1alpha1.ReasonDataSourceWaitingForCluster,
+				Message: "waiting for PerconaXtraDBCluster to be Ready",
+			})
 			return nil
 		}
 		if _, err := c.ReconcileDataSource(); err != nil {
@@ -360,6 +398,100 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	return nil
+}
+
+// ensureDataSourceCredentials copies the users secret from the source Instance
+// to the target Instance when seeding from .spec.dataSource.
+// This is idempotent: if the target secret already exists it is not
+// overwritten, ensuring reconcile loops don't corrupt credentials.
+func ensureDataSourceCredentials(c *controller.Context, targetSecretName string) error {
+	// If the target secret already exists, we're done. Either a previous
+	// reconcile created it or the user pre-provisioned it manually.
+	targetSecret := &corev1.Secret{}
+	if err := c.Get(targetSecret, targetSecretName); err == nil {
+		return nil
+	}
+
+	sourceInstanceName, err := dataSourceInstanceName(c)
+	if err != nil {
+		return err
+	}
+	if sourceInstanceName == "" {
+		// The source cannot be resolved yet (or at all); ReconcileDataSource
+		// surfaces that as a condition. Let Sync continue — the gate on the
+		// cluster being Ready holds the restore.
+		return nil
+	}
+
+	// The source Instance's users secret follows the same naming convention.
+	sourceSecretName := "everest-secrets-" + sourceInstanceName
+	sourceSecret := &corev1.Secret{}
+	if err := c.Get(sourceSecret, sourceSecretName); err != nil {
+		if apierrors.IsNotFound(err) {
+			message := fmt.Sprintf("source Instance credentials secret %q not found; the source Instance may have been deleted", sourceSecretName)
+			c.SetDataSourceStatus(controller.DataSourceStatus{
+				Done:    true,
+				State:   controller.DataSourceStateFailed,
+				Reason:  corev1alpha1.ReasonDataSourceFailed,
+				Message: message,
+			})
+			return &controller.DataSourceConfigError{
+				Reason:  corev1alpha1.ReasonDataSourceFailed,
+				Message: message,
+			}
+		}
+		return fmt.Errorf("get source credentials secret %q: %w", sourceSecretName, err)
+	}
+
+	newSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      targetSecretName,
+			Namespace: c.Namespace(),
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "everest",
+				"app.kubernetes.io/instance":   c.Name(),
+			},
+		},
+		Data: sourceSecret.Data,
+	}
+	if err := c.Client().Create(c.Context(), newSecret); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// Race: another reconcile beat us to it.
+			return nil
+		}
+		return fmt.Errorf("create target credentials secret %q: %w", targetSecretName, err)
+	}
+	return nil
+}
+
+// dataSourceInstanceName resolves the Instance whose data is being seeded from.
+// A "Backup" source names it indirectly, through the referenced Backup CR's
+// .spec.instanceRef; a "PointInTime" source names it directly (required by a
+// CEL rule on Instance, since a new Instance has no stream of its own to
+// default to). An empty name means the source is not resolvable yet.
+func dataSourceInstanceName(c *controller.Context) (string, error) {
+	ds := c.Instance().Spec.DataSource
+	switch ds.Type {
+	case backupv1alpha1.DataSourceTypeBackup:
+		if ds.Backup == nil || ds.Backup.BackupRef.Name == "" {
+			return "", nil
+		}
+		srcBackup := &backupv1alpha1.Backup{}
+		if err := c.Get(srcBackup, ds.Backup.BackupRef.Name); err != nil {
+			if apierrors.IsNotFound(err) {
+				return "", nil
+			}
+			return "", fmt.Errorf("get source Backup %q for credential copy: %w", ds.Backup.BackupRef.Name, err)
+		}
+		return srcBackup.Spec.InstanceRef.Name, nil
+	case backupv1alpha1.DataSourceTypePointInTime:
+		if ds.PointInTime == nil || ds.PointInTime.Source.InstanceRef == nil {
+			return "", nil
+		}
+		return ds.PointInTime.Source.InstanceRef.Name, nil
+	default:
+		return "", nil
+	}
 }
 
 // unsafeFlags returns pxcv1.UnsafeFlags considering the given replicas configuration.
@@ -390,15 +522,22 @@ func StatusPXC(c *controller.Context) (controller.Status, error) {
 	if ds := c.GetDataSourceStatus(); ds != nil && !ds.Done {
 		return controller.Restoring(ds.Message), nil
 	}
+
+	// A restore drives the engine through paused, starting and momentarily
+	// ready states, so reading the phase off the engine alone makes the Instance
+	// flap between Restoring, Provisioning and Ready while one is in flight.
+	// The Restore CR reaching a terminal state is what ends the restore, so let
+	// it own the phase for as long as it is running.
+	activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
+	if err != nil {
+		return controller.Status{}, err
+	}
+	if activeRestore {
+		return controller.Restoring("Restore is running"), nil
+	}
+
 	switch pxc.Status.Status {
 	case pxcv1.AppStatePaused:
-		activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
-		if err != nil {
-			return controller.Failed("Failed to list Restore resources: " + err.Error()), err
-		}
-		if activeRestore {
-			return controller.Restoring("Restore is running"), nil
-		}
 		return controller.Provisioning("Cluster is paused"), nil
 	case pxcv1.AppStateReady:
 		details, err := buildConnectionDetails(c, pxc)
@@ -485,7 +624,7 @@ func NewPXCProviderInterface() *PXCProvider {
 					requests := make([]reconcile.Request, 0, len(instances.Items))
 					for i := range instances.Items {
 						instance := instances.Items[i]
-						if instance.Spec.Provider != p.Name() {
+						if instance.Spec.ProviderRef.Name != p.Name() {
 							continue
 						}
 						requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&instance)})
@@ -493,6 +632,21 @@ func NewPXCProviderInterface() *PXCProvider {
 					return requests
 				}),
 				controller.ResourceVersionChangedPredicate,
+			),
+			// Watch operator backups so the PITR window published by
+			// BackupStorageStatuses refreshes as the operator stamps
+			// latestRestorableTime and the PITRReady condition on them.
+			// Operator backups are not owned by the Instance, so map them to
+			// the parent via spec.pxcCluster.
+			controller.WatchExternal(&pxcv1.PerconaXtraDBClusterBackup{},
+				handler.EnqueueRequestsFromMapFunc(enqueueOperatorBackupInstance()),
+			),
+			// Watch Restores so the Instance leaves the Restoring phase as soon
+			// as one reaches a terminal state. The engine usually reports ready
+			// before the Restore CR does, so without this the Instance would sit
+			// in Restoring until an unrelated event arrived.
+			controller.WatchExternal(&backupv1alpha1.Restore{},
+				handler.EnqueueRequestsFromMapFunc(enqueueRestoreInstance()),
 			),
 		},
 	}
