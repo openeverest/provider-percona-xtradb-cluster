@@ -9,21 +9,15 @@ DISABLE_TELEMETRY ?= true
 
 .PHONY: prepare-chart
 prepare-chart:
-	yq eval -i '.version = "${CHART_VERSION}"' Chart.yaml
-	yq eval -i '.appVersion = "${VERSION}"' Chart.yaml
+	yq eval -i '.version = "$(CHART_VERSION)"' Chart.yaml
+	yq eval -i '.appVersion = "$(VERSION)"' Chart.yaml
 	yq eval -i '.image.repository = "$(IMAGE_PREFIX)/$(PROVIDER_IMAGE_NAME)"' values.yaml
 	yq eval -i '.image.tag = "$(VERSION)"' values.yaml
 	yq eval -i '.operator.disableTelemetry = $(DISABLE_TELEMETRY)' values.yaml
 	$(MAKE) deps
 
 .PHONY: release
-release: DISABLE_TELEMETRY := true
 release: prepare-chart
-
-.PHONY: release-dev
-release-dev: PROVIDER_IMAGE_NAME := provider-percona-xtradb-cluster-dev
-release-dev: DISABLE_TELEMETRY := true
-release-dev: prepare-chart
 
 .PHONY: deps
 deps:
