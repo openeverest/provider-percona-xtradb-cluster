@@ -125,13 +125,7 @@ func backupImageForEngineVersion(spec *corev1alpha1.ProviderSpec, engineVersion 
 }
 
 func imageForBundledProxy(c *controller.Context, spec *corev1alpha1.ProviderSpec, proxyType string) (string, error) {
-	selectedBundle := c.Instance().Spec.Version
-	if selectedBundle == "" {
-		selectedBundle = c.Instance().Status.Version
-	}
-	if selectedBundle == "" {
-		selectedBundle = controller.GetDefaultVersionBundleName(spec)
-	}
+	selectedBundle := controller.EffectiveVersionBundleName(spec, c.Instance())
 	if selectedBundle != "" {
 		bundle, err := controller.ResolveVersionBundle(spec, selectedBundle)
 		if err != nil {
