@@ -152,13 +152,7 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 		return err
 	}
 
-	selectedBundle := c.Instance().Spec.Version
-	if selectedBundle == "" {
-		selectedBundle = c.Instance().Status.Version
-	}
-	if selectedBundle == "" {
-		selectedBundle = controller.GetDefaultVersionBundleName(providerSpec)
-	}
+	selectedBundle := controller.EffectiveVersionBundleName(providerSpec, c.Instance())
 	if selectedBundle == "" {
 		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: "cannot resolve version bundle for backup image selection"}
 	}
