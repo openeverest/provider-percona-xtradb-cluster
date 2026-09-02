@@ -89,7 +89,10 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 			}},
 		},
 		Spec: backupv1alpha1.BackupSpec{
-			InstanceRef:  common.ObjectRef{Name: pxcBackup.Spec.PXCCluster},
+			Origin: backupv1alpha1.BackupOrigin{
+				Type:        backupv1alpha1.BackupOriginTypeExternal,
+				InstanceRef: &common.ObjectRef{Name: pxcBackup.Spec.PXCCluster},
+			},
 			ClassRef:     common.ObjectRef{Name: instance.Spec.Backup.ClassRef.Name},
 			StorageRef:   common.ObjectRef{Name: storageName},
 			ScheduleName: scheduleName,

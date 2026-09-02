@@ -460,7 +460,7 @@ func ensureDataSourceCredentials(c *controller.Context, targetSecretName string)
 
 // dataSourceInstanceName resolves the Instance whose data is being seeded from.
 // A "Backup" source names it indirectly, through the referenced Backup CR's
-// .spec.instanceRef; a "PointInTime" source names it directly (required by a
+// .spec.origin.instanceRef; a "PointInTime" source names it directly (required by a
 // CEL rule on Instance, since a new Instance has no stream of its own to
 // default to). An empty name means the source is not resolvable yet.
 func dataSourceInstanceName(c *controller.Context) (string, error) {
@@ -477,7 +477,7 @@ func dataSourceInstanceName(c *controller.Context) (string, error) {
 			}
 			return "", fmt.Errorf("get source Backup %q for credential copy: %w", ds.Backup.BackupRef.Name, err)
 		}
-		return srcBackup.Spec.InstanceRef.Name, nil
+		return srcBackup.Spec.Origin.InstanceRef.Name, nil
 	case backupv1alpha1.DataSourceTypePointInTime:
 		if ds.PointInTime == nil || ds.PointInTime.Source.InstanceRef == nil {
 			return "", nil
