@@ -44,9 +44,9 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 	if backup.Labels == nil {
 		backup.Labels = map[string]string{}
 	}
-	if backup.Labels[instanceNameLabelKey] != backup.Spec.InstanceRef.Name {
+	if backup.Labels[instanceNameLabelKey] != backup.Spec.Origin.InstanceRef.Name {
 		origBackupCR := backup.DeepCopy()
-		backup.Labels[instanceNameLabelKey] = backup.Spec.InstanceRef.Name
+		backup.Labels[instanceNameLabelKey] = backup.Spec.Origin.InstanceRef.Name
 		if err := c.Client().Patch(c.Context(), backup, client.MergeFrom(origBackupCR)); err != nil {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("patch Backup %q labels: %w", backup.Name, err)
 		}
@@ -81,7 +81,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		}
 
 		pxc := &pxcv1.PerconaXtraDBCluster{}
-		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Spec.InstanceRef.Name}, pxc); err != nil {
+		if err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Spec.Origin.InstanceRef.Name}, pxc); err != nil {
 			if apierrors.IsNotFound(err) {
 				return controller.BackupExecutionStatus{
 					State:             backupv1alpha1.BackupStatePending,
@@ -89,7 +89,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 					OperatorBackupRef: opRef,
 				}, nil
 			}
-			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.InstanceRef.Name, err)
+			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBCluster %q: %w", backup.Spec.Origin.InstanceRef.Name, err)
 		}
 
 		// The Instance reconciler is what registers storages on the
@@ -115,7 +115,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				Namespace: backup.Namespace,
 			},
 			Spec: pxcv1.PXCBackupSpec{
-				PXCCluster:  backup.Spec.InstanceRef.Name,
+				PXCCluster:  backup.Spec.Origin.InstanceRef.Name,
 				StorageName: backup.Spec.StorageRef.Name,
 			},
 		}
@@ -143,7 +143,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 				immutableErr,
 				"failed to reconcile backup CR",
 				"backup", backup.Name,
-				"requestedInstanceName", backup.Spec.InstanceRef.Name,
+				"requestedInstanceName", backup.Spec.Origin.InstanceRef.Name,
 				"existingInstanceName", opBackup.Spec.PXCCluster,
 				"requestedStorageName", backup.Spec.StorageRef.Name,
 				"existingStorageName", opBackup.Spec.StorageName,
@@ -643,10 +643,10 @@ func ptrTo[T any](v T) *T {
 }
 
 func immutableBackupSpecChangeMessage(opBackup *pxcv1.PerconaXtraDBClusterBackup, backup *backupv1alpha1.Backup) string {
-	if backup.Spec.InstanceRef.Name != opBackup.Spec.PXCCluster {
+	if backup.Spec.Origin.InstanceRef.Name != opBackup.Spec.PXCCluster {
 		return fmt.Sprintf(
-			"cannot change backup spec.instanceRef.name after creation (requested %q, existing %q)",
-			backup.Spec.InstanceRef.Name,
+			"cannot change backup spec.origin.instanceRef.name after creation (requested %q, existing %q)",
+			backup.Spec.Origin.InstanceRef.Name,
 			opBackup.Spec.PXCCluster,
 		)
 	}
