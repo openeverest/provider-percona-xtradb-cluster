@@ -48,7 +48,7 @@ env:
   PROVIDER_NAMESPACE: provider-system
 
   # Branch of openeverest/openeverest to build the platform from.
-  OPENEVEREST_BRANCH: release-2.0
+  OPENEVEREST_BRANCH: main
 
   # Image names produced by the openeverest build (must match its Makefile).
   EVEREST_IMG: ghcr.io/openeverest/openeverest-dev:0.0.0

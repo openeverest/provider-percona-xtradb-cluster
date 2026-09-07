@@ -28,7 +28,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+      - uses: golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.11.3
 
@@ -134,20 +134,20 @@ jobs:
       - name: Lint Helm chart
         run: helm lint charts/provider-percona-xtradb-cluster
 
-#  test-integration-monitoring-pmm:
-#    name: Integration / monitoring PMM
-#    needs: [lint, build, verify]
-#    uses: ./.github/workflows/integration-test.yaml
-#    with:
-#      make_target: test-integration-monitoring-pmm
-#      suite: monitoring
-#    secrets: inherit
-#
-#  test-integration-backup-datasource:
-#    name: Integration / backup datasource
-#    needs: [lint, build, verify]
-#    uses: ./.github/workflows/integration-test.yaml
-#    with:
-#      make_target: test-integration-backup-datasource
-#      suite: backup
-#    secrets: inherit
+  test-integration:
+    name: Integration tests
+    needs: [lint, build, verify, helm-lint]
+    uses: ./.github/workflows/integration-test.yaml
+    with:
+      make_target: test-integration
+      suite: all
+      timeout_minutes: 60
+      needs_minio: true
+
+  test-e2e-cluster-datasource-backup:
+    name: E2E cluster / backup datasource
+    needs: [lint, build, verify, helm-lint]
+    uses: ./.github/workflows/e2e-cluster-test.yaml
+    with:
+      make_target: test-e2e-cluster-datasource-backup
+      suite: backup-datasource
