@@ -500,51 +500,6 @@ func selectPITRBaseBackup(
 	return best.Name, nil
 }
 
-func succeededBackupNameForPITR(
-	c *controller.Context,
-	restore *backupv1alpha1.Restore,
-	opRef *common.TypedObjectRef,
-) (string, *controller.RestoreExecutionStatus, error) {
-	pitr := restore.Spec.DataSource.PointInTime
-	if pitr == nil {
-		return "", &controller.RestoreExecutionStatus{
-			State:              backupv1alpha1.RestoreStateFailed,
-			Message:            "Restore dataSource.pointInTime is required when type is \"PointInTime\"",
-			OperatorRestoreRef: opRef,
-		}, nil
-	}
-
-	backupList := &backupv1alpha1.BackupList{}
-	if err := c.Client().List(c.Context(), backupList, client.InNamespace(restore.Namespace)); err != nil {
-		return "", nil, fmt.Errorf("list Backup resources: %w", err)
-	}
-
-	instanceName := restore.Spec.InstanceRef.Name
-	if pitr.Source.InstanceRef != nil && pitr.Source.InstanceRef.Name != "" {
-		instanceName = pitr.Source.InstanceRef.Name
-	}
-
-	for i := range backupList.Items {
-		b := backupList.Items[i]
-		if b.Status.State != backupv1alpha1.BackupStateSucceeded {
-			continue
-		}
-		if b.Spec.Origin.InstanceRef == nil || b.Spec.Origin.InstanceRef.Name != instanceName {
-			continue
-		}
-		if pitr.Source.StorageRef.Name != "" && b.Spec.StorageRef.Name != pitr.Source.StorageRef.Name {
-			continue
-		}
-		return b.Name, nil, nil
-	}
-
-	return "", &controller.RestoreExecutionStatus{
-		State:              backupv1alpha1.RestoreStatePending,
-		Message:            "Waiting for a succeeded Backup to use as the PITR base",
-		OperatorRestoreRef: opRef,
-	}, nil
-}
-
 // CleanupBackup deletes the operator backup resource. For DeletionPolicy: Retain,
 // remove storage-protection finalizers before deletion to preserve backup data.
 // Return true only when fully deleted, false to requeue.
