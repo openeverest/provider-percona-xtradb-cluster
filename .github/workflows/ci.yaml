@@ -140,13 +140,15 @@ jobs:
     uses: ./.github/workflows/integration-test.yaml
     with:
       make_target: test-integration
-      suite: all
+      suite: integration
       timeout_minutes: 60
+    secrets: inherit
 
-  test-e2e-cluster-datasource-backup:
-    name: E2E cluster / backup datasource
+  test-e2e-cluster:
+    name: E2E tests
     needs: [lint, build, verify, helm-lint]
     uses: ./.github/workflows/e2e-cluster-test.yaml
     with:
-      make_target: test-e2e-cluster-datasource-backup
-      suite: backup-datasource
+      make_target: test-e2e-cluster
+      suite: e2e
+    secrets: inherit
