@@ -90,7 +90,7 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 		},
 		Spec: backupv1alpha1.BackupSpec{
 			Origin: backupv1alpha1.BackupOrigin{
-				Type:        backupv1alpha1.BackupOriginTypeInstance,
+				Type:        backupv1alpha1.BackupOriginTypeExternal,
 				InstanceRef: &common.ObjectRef{Name: pxcBackup.Spec.PXCCluster},
 			},
 			ClassRef:     common.ObjectRef{Name: instance.Spec.Backup.ClassRef.Name},
@@ -155,13 +155,7 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 		return err
 	}
 
-	selectedBundle := c.Instance().Spec.Version
-	if selectedBundle == "" {
-		selectedBundle = c.Instance().Status.Version
-	}
-	if selectedBundle == "" {
-		selectedBundle = controller.GetDefaultVersionBundleName(providerSpec)
-	}
+	selectedBundle := controller.EffectiveVersionBundleName(providerSpec, c.Instance())
 	if selectedBundle == "" {
 		return &controller.BackupConfigError{Reason: "BackupImageUnavailable", Message: "cannot resolve version bundle for backup image selection"}
 	}

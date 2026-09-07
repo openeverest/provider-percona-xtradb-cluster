@@ -198,13 +198,7 @@ func monitoringImageForComponent(c *controller.Context, providerSpec *corev1alph
 		}
 	}
 
-	selectedBundle := c.Instance().Spec.Version
-	if selectedBundle == "" {
-		selectedBundle = c.Instance().Status.Version
-	}
-	if selectedBundle == "" {
-		selectedBundle = controller.GetDefaultVersionBundleName(providerSpec)
-	}
+	selectedBundle := controller.EffectiveVersionBundleName(providerSpec, c.Instance())
 	if selectedBundle != "" {
 		if bundle, err := controller.ResolveVersionBundle(providerSpec, selectedBundle); err == nil {
 			if version, ok := bundle.Components[common.ComponentMonitoring]; ok {

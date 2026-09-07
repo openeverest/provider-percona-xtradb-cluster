@@ -46,11 +46,9 @@ manages pods directly — all lifecycle work is delegated to the operator.
 
 ## Compatibility
 
-This provider has **not been released yet** — the table describes `main`.
-
 | provider-percona-xtradb-cluster | OpenEverest | Percona Operator for MySQL | Kubernetes |
 |---|---|---|---|
-| `main` | `>= 2.0.0` | `1.20.x` | `1.30` – `1.34` |
+| `0.1.x` | `2.0.0-dev.2` | `1.20.x` | `1.30` – `1.34` |
 
 ## Capabilities
 
