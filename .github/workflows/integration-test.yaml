@@ -19,13 +19,17 @@ on:
         required: false
         default: 60
         type: number
+      needs_minio:
+        description: Whether to deploy MinIO before running the tests
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 env:
   IMG: provider-percona-xtradb-cluster:ci
-  OPENEVEREST_DIR: _openeverest
   OPENEVEREST_BRANCH: main
 
 jobs:
@@ -41,7 +45,7 @@ jobs:
         with:
           repository: openeverest/openeverest
           ref: ${{ env.OPENEVEREST_BRANCH }}
-          path: ${{ env.OPENEVEREST_DIR }}
+          path: _openeverest
 
       - name: Install Kubernetes tooling
         uses: ./.github/actions/setup-k8s-tools
@@ -67,8 +71,12 @@ jobs:
       - name: Import provider image into k3d
         run: make load-image
 
-      - name: Build OpenEverest controller image
-        working-directory: ${{ env.OPENEVEREST_DIR }}
+      - name: Build OpenEverest controller
+        working-directory: _openeverest
+        run: make build-controller
+
+      - name: Build OpenEverest controller Docker image
+        working-directory: _openeverest
         run: make docker-build-controller
 
       - name: Import OpenEverest controller image into k3d
@@ -76,13 +84,25 @@ jobs:
 
       - name: Install CRDs
         run: make install-crds
+        env:
+          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
+
+      - name: Deploy MinIO for backup tests
+        if: ${{ inputs.needs_minio }}
+        run: |
+          kubectl apply -f ./minio.yaml
+          kubectl wait -n minio --for=condition=Ready pod/minio --timeout=180s
 
       - name: Deploy provider for CI
         run: make deploy-provider-ci PXC_OPERATOR_REPLICA_COUNT=0
 
       - name: Deploy OpenEverest controller
-        working-directory: ${{ env.OPENEVEREST_DIR }}
+        working-directory: _openeverest
         run: make deploy-test-controller
+
+      - name: Wait for OpenEverest deployment to be ready
+        working-directory: _openeverest
+        run: make wait-test-controller
 
       - name: Run integration suite(s)
         run: make ${{ inputs.make_target }}
@@ -98,3 +118,4 @@ jobs:
       - name: Cleanup test cluster
         if: always()
         run: make k3d-cluster-down
+

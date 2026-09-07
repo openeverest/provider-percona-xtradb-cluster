@@ -142,6 +142,7 @@ jobs:
       make_target: test-integration
       suite: integration
       timeout_minutes: 60
+      needs_minio: true
     secrets: inherit
 
   test-e2e-cluster:

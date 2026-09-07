@@ -21,7 +21,7 @@ permissions:
 
 env:
   IMG: provider-percona-xtradb-cluster:ci
-  OPENEVEREST_DIR: _openeverest
+  # Branch of openeverest/openeverest to build the platform from.
   OPENEVEREST_BRANCH: main
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
         with:
           repository: openeverest/openeverest
           ref: ${{ env.OPENEVEREST_BRANCH }}
-          path: ${{ env.OPENEVEREST_DIR }}
+          path: _openeverest
 
       - name: Install Kubernetes tooling
         uses: ./.github/actions/setup-k8s-tools
@@ -64,8 +64,12 @@ jobs:
       - name: Import provider image into k3d
         run: make load-image
 
-      - name: Build OpenEverest controller image
-        working-directory: ${{ env.OPENEVEREST_DIR }}
+      - name: Build OpenEverest controller
+        working-directory: _openeverest
+        run: make build-controller
+
+      - name: Build OpenEverest controller Docker image
+        working-directory: _openeverest
         run: make docker-build-controller
 
       - name: Import OpenEverest controller image into k3d
@@ -73,6 +77,8 @@ jobs:
 
       - name: Install CRDs
         run: make install-crds
+        env:
+          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
       - name: Deploy MinIO for backup tests
         run: |
@@ -83,8 +89,12 @@ jobs:
         run: make deploy-provider-e2e
 
       - name: Deploy OpenEverest controller
-        working-directory: ${{ env.OPENEVEREST_DIR }}
+        working-directory: _openeverest
         run: make deploy-test-controller
+
+      - name: Wait for OpenEverest deployment to be ready
+        working-directory: _openeverest
+        run: make wait-test-controller
 
       - name: Run ${{ inputs.make_target }}
         run: make ${{ inputs.make_target }}
