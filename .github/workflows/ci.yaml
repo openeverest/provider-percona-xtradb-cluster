@@ -142,7 +142,6 @@ jobs:
       make_target: test-integration
       suite: all
       timeout_minutes: 60
-      needs_minio: true
 
   test-e2e-cluster-datasource-backup:
     name: E2E cluster / backup datasource
