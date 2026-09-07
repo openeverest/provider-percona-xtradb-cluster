@@ -16,6 +16,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -24,6 +25,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -190,8 +192,8 @@ func ValidatePXC(c *controller.Context) error {
 				pitrEnabled++
 
 				var rawCfg []byte
-				if s.PITR.Config != nil {
-					rawCfg = s.PITR.Config.Raw
+				if s.PITR.Parameters != nil {
+					rawCfg = s.PITR.Parameters.Raw
 				}
 				if _, err := decodeAndValidatePITRConfig(s.StorageRef.Name, rawCfg); err != nil {
 					return err
@@ -281,8 +283,12 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	if engine.Config != "" {
-		pxc.Spec.PXC.Configuration = engine.Config
+	engineConfig, cfgErr := engineConfigurationFromComponent(engine)
+	if cfgErr != nil {
+		return cfgErr
+	}
+	if engineConfig != "" {
+		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
 		switch *engine.Replicas {
 		case 1:
@@ -599,3 +605,14 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 var _ controller.ProviderInterface = (*PXCProvider)(nil)
 var _ controller.WatchProvider = (*PXCProvider)(nil)
 var _ controller.FieldIndexProvider = (*PXCProvider)(nil)
+
+func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
+	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
+		return "", nil
+	}
+	cfg := &components.PxcParameters{}
+	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
+		return "", fmt.Errorf("decode engine component parameters: %w", err)
+	}
+	return cfg.Configuration, nil
+}

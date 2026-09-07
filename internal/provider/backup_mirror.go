@@ -89,7 +89,10 @@ func (p *PXCProvider) Mirror(ctx context.Context, c client.Client, obj client.Ob
 			}},
 		},
 		Spec: backupv1alpha1.BackupSpec{
-			InstanceRef:  common.ObjectRef{Name: pxcBackup.Spec.PXCCluster},
+			Origin: backupv1alpha1.BackupOrigin{
+				Type:        backupv1alpha1.BackupOriginTypeInstance,
+				InstanceRef: &common.ObjectRef{Name: pxcBackup.Spec.PXCCluster},
+			},
 			ClassRef:     common.ObjectRef{Name: instance.Spec.Backup.ClassRef.Name},
 			StorageRef:   common.ObjectRef{Name: storageName},
 			ScheduleName: scheduleName,
@@ -232,8 +235,8 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			backupSpec.PITR.StorageName = storage.StorageRef.Name
 
 			var rawCfg []byte
-			if storage.PITR.Config != nil {
-				rawCfg = storage.PITR.Config.Raw
+			if storage.PITR.Parameters != nil {
+				rawCfg = storage.PITR.Parameters.Raw
 			}
 			cfg, err := decodeAndValidatePITRConfig(storage.StorageRef.Name, rawCfg)
 			if err != nil {

@@ -13,9 +13,11 @@ name: percona-xtradb-cluster
 components:
   engine:
     type: pxc
+    parametersSchema: PxcParameters
   proxy:
     type: haproxy
   backup:
     type: backup
   monitoring:
     type: pmm
+    parametersSchema: PmmParameters

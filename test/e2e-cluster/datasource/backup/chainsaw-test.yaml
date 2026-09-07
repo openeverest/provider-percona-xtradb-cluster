@@ -27,11 +27,10 @@ spec:
       try:
         - script:
             content: |
-              # Minio is installed by make test-integration-env-up (./minio.yaml).
-              # Do not apply testdata/minio: that PVC is 1Gi and the pod spec differs,
-              # so kubectl apply fails on an already-running env.
+              # Use the cluster Minio manifest, not testdata/minio (different PVC/spec).
+              kubectl apply -f ${OPERATOR_ROOT_PATH}/minio.yaml
               kubectl wait pod/minio --for=condition=Ready -n minio --timeout=120s
-              # env-up only creates bucket-1..6; BackupStorage uses everest-operator.
+              # env-up / minio.yaml only create bucket-1..6; BackupStorage uses everest-operator.
               kubectl exec -n minio minio -c minio -- mkdir -p /data/everest-operator
       catch:
         - script:
