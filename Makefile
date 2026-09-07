@@ -215,7 +215,7 @@ deploy-provider-e2e: ## Deploy the provider with PXC operator for E2E tests.
 		--set operator.replicaCount=1 \
 		--wait --timeout 5m
 	kubectl wait --for=condition=available --timeout=120s \
-		-n provider-system -l app.kubernetes.io/component=operator deploy
+		deploy/provider-percona-xtradb-cluster-operator -n provider-system
 
 ##@ Helm
 
