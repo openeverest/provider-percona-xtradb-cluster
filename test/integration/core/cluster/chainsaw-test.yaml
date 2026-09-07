@@ -1,0 +1,166 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core-cluster
+spec:
+  description: |
+    PXC Instance lifecycle: create a 3-node cluster, report Ready from
+    simulated operator status, scale, apply affinity and Service type updates,
+    switch to a single-node topology, and delete cleanly.
+    The Percona operator is scaled to 0 so status is simulated, matching other
+    integration suites.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: scale-down-pxc-operator
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-cluster
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    # Create the users secret, then simulate the cluster becoming ready. The
+    # secret must exist before the status patch triggers reconcile, otherwise
+    # connection details fail and the Instance cannot become Ready.
+    - name: cluster-ready
+      try:
+        - apply:
+            file: 11-cluster-ready.yaml
+        - script:
+            content: |
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 11-assert.yaml
+
+    - name: scale-cluster
+      try:
+        - apply:
+            file: 20-update-cluster.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.pxc.size}'=5 --timeout=30s
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 20-assert.yaml
+
+    - name: update-affinity
+      try:
+        - apply:
+            file: 21-update-cluster-affinity.yaml
+        - script:
+            content: |
+              kubectl wait instance/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.components.engine.schedulingPolicy.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight}'=100 --timeout=30s
+              sleep 3
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 21-assert.yaml
+
+    - name: update-service-load-balancer
+      try:
+        - apply:
+            file: 22-update-cluster-lb.yaml
+        - script:
+            content: |
+              kubectl wait instance/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.components.engine.service.serviceType}'=LoadBalancer --timeout=30s
+              sleep 3
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 22-assert.yaml
+
+    - name: update-service-cluster-ip
+      try:
+        - apply:
+            file: 23-update-cluster-cluster-ip.yaml
+        - script:
+            content: |
+              kubectl wait instance/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.components.engine.service.serviceType}'=ClusterIP --timeout=30s
+              sleep 3
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 23-assert.yaml
+
+    - name: update-service-node-port
+      try:
+        - apply:
+            file: 24-update-cluster-node-port.yaml
+        - script:
+            content: |
+              kubectl wait instance/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.components.engine.service.serviceType}'=NodePort --timeout=30s
+              sleep 3
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 24-assert.yaml
+
+    - name: create-single-node-cluster
+      try:
+        - apply:
+            file: 40-create-single-node-cluster.yaml
+        - assert:
+            file: 40-assert.yaml
+
+    - name: single-node-ready
+      try:
+        - apply:
+            file: 41-cluster-ready.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.pxc.size}'=1 --timeout=30s
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":1,\"ready\":1,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 41-assert.yaml
+
+    - name: delete-cluster
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete instance/test-pxc-cluster pxc.pxc.percona.com/test-pxc-cluster --wait=false --ignore-not-found && sleep 5
+              kubectl -n $NAMESPACE patch pxc.pxc.percona.com/test-pxc-cluster -p '{"metadata":{"finalizers":null}}' --type merge || true
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            name: test-pxc-cluster
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            name: test-pxc-cluster
+            for:
+              deletion: {}

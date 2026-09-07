@@ -1,0 +1,22 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: src-pxc-cluster
+status:
+  phase: Ready
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: src-pxc-cluster
+status:
+  state: ready
+  pxc:
+    size: 3
+    ready: 3
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: src-pxc-cluster-conn
+

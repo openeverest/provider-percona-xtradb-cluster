@@ -1,0 +1,155 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: backup-restore
+spec:
+  description: |
+    Restore from a backup onto the same Instance: create a cluster with
+    backups enabled, take a backup, create a Restore CR targeting that
+    cluster, and verify PerconaXtraDBClusterRestore is created.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com,backup,pxc-backup.pxc.percona.com,restore,pxc-restore.pxc.percona.com,backupstorage -o yaml
+    - script:
+        content: kubectl get backupclass -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+    - script:
+        content: |
+          for kind in pxc.pxc.percona.com pxc-backup.pxc.percona.com pxc-restore.pxc.percona.com restore backup instance; do
+            kubectl -n "$NAMESPACE" get "$kind" -o name 2>/dev/null | while read obj; do
+              kubectl -n "$NAMESPACE" patch "$obj" --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+            done
+          done
+          kubectl -n "$NAMESPACE" patch pxc.pxc.percona.com --all --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+          kubectl -n "$NAMESPACE" patch pxc-backup.pxc.percona.com --all --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+          kubectl -n "$NAMESPACE" patch pxc-restore.pxc.percona.com --all --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+          kubectl -n "$NAMESPACE" patch restore --all --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+          kubectl -n "$NAMESPACE" patch backup --all --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+          kubectl -n "$NAMESPACE" patch instance --all --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+  steps:
+    - name: setup-backup-infra
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+        - apply:
+            file: 00-install.yaml
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-source-cluster
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    - name: source-cluster-ready
+      try:
+        - apply:
+            file: 11-cluster-ready.yaml
+        - script:
+            content: |
+              GEN=$(kubectl get pxc.pxc.percona.com/src-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/src-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"src-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 11-assert.yaml
+
+    - name: create-backup
+      try:
+        - apply:
+            file: 20-create-backup.yaml
+        - assert:
+            file: 20-assert.yaml
+
+    - name: backup-ready
+      try:
+        - script:
+            content: |
+              kubectl patch pxc-backup.pxc.percona.com/src-backup --subresource status -n "$NAMESPACE" --type=merge \
+                -p '{"status":{"state":"Succeeded"}}'
+        - assert:
+            file: 21-assert.yaml
+
+    - name: create-restore
+      try:
+        - apply:
+            file: 30-create-cluster-from-backup.yaml
+        - assert:
+            file: 30-assert.yaml
+
+    - name: restore-complete
+      try:
+        - script:
+            content: |
+              kubectl patch pxc-restore.pxc.percona.com/src-restore --subresource status -n "$NAMESPACE" --type=merge \
+                -p '{"status":{"state":"Succeeded"}}'
+        - assert:
+            file: 31-assert.yaml
+
+    - name: delete-clusters
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete pxc-restore.pxc.percona.com,pxc-backup.pxc.percona.com,pxc.pxc.percona.com,backup,restore,instance --all --wait=false --ignore-not-found=true
+              for kind in pxc-backup.pxc.percona.com pxc-restore.pxc.percona.com restore backup pxc.pxc.percona.com instance; do
+                kubectl -n "$NAMESPACE" get "$kind" -o name 2>/dev/null | while read obj; do
+                  kubectl -n "$NAMESPACE" patch "$obj" --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+                done
+              done
+        - wait:
+            apiVersion: backup.openeverest.io/v1alpha1
+            kind: Restore
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBClusterRestore
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBClusterBackup
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: backup.openeverest.io/v1alpha1
+            kind: Backup
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            for:
+              deletion: {}
+
+    - name: cleanup-backup-infra
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete backupstorage --all --ignore-not-found=true
+              kubectl -n $NAMESPACE delete secret/backup-storage-credentials --ignore-not-found=true
+        - wait:
+            apiVersion: backup.openeverest.io/v1alpha1
+            kind: BackupStorage
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: v1
+            kind: Secret
+            name: backup-storage-credentials
+            for:
+              deletion: {}

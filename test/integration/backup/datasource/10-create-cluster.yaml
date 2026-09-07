@@ -1,0 +1,39 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: src-pxc-cluster
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  backup:
+    enabled: true
+    classRef:
+      name: pxc
+    storages:
+    - storageRef:
+        name: test-storage-s3
+      # A schedule is required: the provider prunes storages that have neither
+      # schedules nor Backup CRs, which would disable backups before the
+      # on-demand Backup in this suite is created.
+      schedules:
+      - name: full
+        enabled: true
+        cron: "0 2 * * *"
+  components:
+    engine:
+      type: pxc
+      replicas: 3
+      resources:
+        limits:
+          cpu: "1"
+          memory: 4G
+        requests:
+          cpu: 500m
+          memory: 2G
+      storage:
+        size: 25Gi
+        storageClass: standard
+    proxy:
+      type: haproxy
+      replicas: 1
+

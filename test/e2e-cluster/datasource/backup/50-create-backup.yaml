@@ -1,0 +1,13 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: pxc-src-backup
+spec:
+  origin:
+    type: Instance
+    instanceRef:
+      name: pxc-src
+  classRef:
+    name: pxc
+  storageRef:
+    name: minio-storage

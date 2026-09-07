@@ -1,0 +1,35 @@
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBClusterRestore
+metadata:
+  name: pxc-src-restore
+status:
+  state: Succeeded
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Restore
+metadata:
+  name: pxc-src-restore
+status:
+  state: Succeeded
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-src
+status:
+  phase: Ready
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-src
+status:
+  state: ready
+  pxc:
+    ready: 1
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pxc-src-conn
+
