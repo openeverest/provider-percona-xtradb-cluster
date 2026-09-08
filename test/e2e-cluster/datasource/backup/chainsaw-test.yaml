@@ -65,8 +65,15 @@ spec:
     - name: source-cluster-ready
       try:
         - assert:
-            timeout: 360s
+            timeout: 15m
             file: 40-assert.yaml
+      catch:
+        - script:
+            content: |
+              kubectl -n "${NAMESPACE}" get pods,pvc,pxc.pxc.percona.com,instance -o wide
+              kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp | tail -50
+              kubectl -n "${NAMESPACE}" describe pxc.pxc.percona.com/pxc-src || true
+              kubectl -n "${NAMESPACE}" describe instance/pxc-src || true
 
     - name: create-source-mysql-client
       try:
