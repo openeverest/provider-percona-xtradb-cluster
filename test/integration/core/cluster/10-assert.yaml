@@ -9,6 +9,16 @@ spec:
     engine:
       type: pxc
       replicas: 3
+      resources:
+        limits:
+          cpu: "1"
+          memory: 4G
+        requests:
+          cpu: 500m
+          memory: 2G
+      storage:
+        size: 25Gi
+        storageClass: standard
     proxy:
       type: haproxy
       replicas: 1
@@ -20,7 +30,19 @@ metadata:
 spec:
   pxc:
     size: 3
+    resources:
+      limits:
+        cpu: "1"
+        memory: 4G
+      requests:
+        cpu: 500m
+        memory: 2G
+    volumeSpec:
+      persistentVolumeClaim:
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 25Gi
   haproxy:
     enabled: true
     size: 1
-

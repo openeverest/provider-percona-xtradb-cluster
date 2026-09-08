@@ -237,6 +237,27 @@ func SyncPXC(c *controller.Context) error {
 		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
 	}
 	pxc.Spec.PXC.Size = *engine.Replicas
+	if engine.Resources != nil {
+		pxc.Spec.PXC.Resources = *engine.Resources
+	}
+	if engine.Storage != nil {
+		if pxc.Spec.PXC.VolumeSpec == nil {
+			pxc.Spec.PXC.VolumeSpec = &pxcv1.VolumeSpec{}
+		}
+		if pxc.Spec.PXC.VolumeSpec.PersistentVolumeClaim == nil {
+			pxc.Spec.PXC.VolumeSpec.PersistentVolumeClaim = &corev1.PersistentVolumeClaimSpec{}
+		}
+		pvc := pxc.Spec.PXC.VolumeSpec.PersistentVolumeClaim
+		if pvc.Resources.Requests == nil {
+			pvc.Resources.Requests = corev1.ResourceList{}
+		}
+		if !engine.Storage.Size.IsZero() {
+			pvc.Resources.Requests[corev1.ResourceStorage] = engine.Storage.Size
+		}
+		if engine.Storage.StorageClass != nil && *engine.Storage.StorageClass != "" {
+			pvc.StorageClassName = engine.Storage.StorageClass
+		}
+	}
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
 	if !ok || proxy.Type == "" || proxy.Replicas == nil {
