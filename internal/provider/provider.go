@@ -16,6 +16,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -279,12 +280,12 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	// The engine configuration file is carried inside the engine component's
-	// parameters; `configuration` is the conventional property name for it.
-	var engineParams components.PXCParameters
-	c.TryDecodeComponentParameters(engine, &engineParams)
-	if engineParams.Configuration != "" {
-		pxc.Spec.PXC.Configuration = engineParams.Configuration
+	engineConfig, cfgErr := engineConfigurationFromComponent(engine)
+	if cfgErr != nil {
+		return cfgErr
+	}
+	if engineConfig != "" {
+		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
 		switch *engine.Replicas {
 		case 1:
@@ -745,3 +746,14 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 var _ controller.ProviderInterface = (*PXCProvider)(nil)
 var _ controller.WatchProvider = (*PXCProvider)(nil)
 var _ controller.FieldIndexProvider = (*PXCProvider)(nil)
+
+func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
+	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
+		return "", nil
+	}
+	cfg := &components.PxcParameters{}
+	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
+		return "", fmt.Errorf("decode engine component parameters: %w", err)
+	}
+	return cfg.Configuration, nil
+}

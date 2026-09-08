@@ -1,0 +1,32 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-cluster
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 5
+      resources:
+        limits:
+          cpu: "1"
+          memory: 4G
+        requests:
+          cpu: 500m
+          memory: 2G
+      storage:
+        size: 25Gi
+      service:
+        serviceType: LoadBalancer
+        annotations:
+          test-annotation: "test-value"
+        loadBalancerService:
+          sourceRanges:
+            - "10.0.0.0/8"
+            - "192.168.1.100"
+    proxy:
+      type: haproxy
+      replicas: 1
+

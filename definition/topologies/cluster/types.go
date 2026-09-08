@@ -14,9 +14,12 @@
 
 // Package cluster contains parameters types for the PXC cluster topology.
 //
+// Add fields to ClusterTopologyParameters and reference it via parametersSchema in
+// topology.yaml when this topology needs custom parameters.
+//
 // +k8s:openapi-gen=true
 package cluster
 
-// ClusterTopologyParameters is intentionally empty.
+// ClusterTopologyParameters defines parameters for the cluster topology.
 // Proxy settings are configured through spec.components.proxy.
 type ClusterTopologyParameters struct{}

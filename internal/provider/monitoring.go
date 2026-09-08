@@ -10,6 +10,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -23,10 +24,6 @@ const (
 	pxcPMMServerKey              = "pmmserverkey"
 	pxcPMMServerToken            = "pmmservertoken"
 )
-
-type pmmParameters struct {
-	MonitoringConfigName *string `json:"monitoringConfigName,omitempty"`
-}
 
 func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster, providerSpec *corev1alpha1.ProviderSpec) error {
 	monitoringComponent, ok := c.Instance().Spec.Components[common.ComponentMonitoring]
@@ -84,6 +81,9 @@ func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBClus
 		CustomClusterName: c.Name(),
 		ImagePullPolicy:   corev1.PullIfNotPresent,
 	}
+	if monitoringComponent.Resources != nil {
+		pxc.Spec.PMM.Resources = *monitoringComponent.Resources
+	}
 	return nil
 }
 
@@ -92,7 +92,7 @@ func monitoringConfigNameFromComponent(component corev1alpha1.ComponentSpec) (st
 		return "", nil
 	}
 
-	cfg := &pmmParameters{}
+	cfg := &components.PmmParameters{}
 	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
 		return "", fmt.Errorf("decode monitoring component parameters: %w", err)
 	}

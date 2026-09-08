@@ -1,0 +1,19 @@
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringConfig
+metadata:
+  name: test-pmm
+spec:
+  type: pmm
+  pmm:
+    credentialsSecretRef:
+      name: test-pmm-secret
+    url: http://pmm-updated.example.invalid
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-pmm-secret
+type: Opaque
+data:
+  apiKey: YXNkZmcxMjM=
+

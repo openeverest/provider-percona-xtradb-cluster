@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-percona-xtradb-cluster-operator
+  namespace: provider-system
+spec:
+  replicas: 0
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backup-storage-credentials
+type: Opaque
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupStorage
+metadata:
+  name: test-storage-s3
+spec:
+  type: s3
+  s3:
+    bucket: test-backup-bucket
+    region: us-east-1
+    endpointURL: http://fake
+    forcePathStyle: true
+    credentialsSecretRef:
+      name: backup-storage-credentials
+    verifyTLS: false
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: BackupClass
+metadata:
+  name: pxc
+spec:
+  displayName: Percona Backup for MySQL based on Percona XtraDB Cluster
+  executionMode: ProviderManaged
+  supportedProviders:
+    - percona-xtradb-cluster
+

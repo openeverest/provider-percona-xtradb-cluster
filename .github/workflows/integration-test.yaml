@@ -1,34 +1,42 @@
 ---
-# Reusable workflow — run one kuttl integration test suite inside a k3d cluster.
-# Called by ci.yaml; not triggered directly.
+# Reusable workflow — run chainsaw integration tests inside a k3d cluster.
 name: Integration test
 
 on:
   workflow_call:
     inputs:
       make_target:
-        description: 'Make target for the kuttl suite (e.g. test-integration-core)'
-        type: string
+        description: Make target to execute for the integration suite(s)
         required: true
+        type: string
       suite:
-        description: 'Human-readable suite name used for artifact naming'
+        description: Human-readable suite name for the job label
+        required: false
+        default: integration
         type: string
-        required: true
+      timeout_minutes:
+        description: Job timeout in minutes
+        required: false
+        default: 60
+        type: number
+      needs_minio:
+        description: Whether to deploy MinIO before running the tests
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 env:
   IMG: provider-percona-xtradb-cluster:ci
-  # Branch of openeverest/openeverest to build the platform from.
-  OPENEVEREST_BRANCH: release-2.0
+  OPENEVEREST_BRANCH: main
 
 jobs:
   run:
     name: ${{ inputs.suite }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -43,7 +51,14 @@ jobs:
         uses: ./.github/actions/setup-k8s-tools
         with:
           install-k3d: 'true'
-          install-kuttl: 'true'
+          install-chainsaw: 'true'
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
       - name: Create k3d cluster
         run: |
@@ -53,7 +68,7 @@ jobs:
       - name: Build provider image
         run: make docker-build
 
-      - name: Import image into k3d
+      - name: Import provider image into k3d
         run: make load-image
 
       - name: Build OpenEverest controller
@@ -72,8 +87,14 @@ jobs:
         env:
           OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
-      - name: Deploy provider
-        run: make deploy-provider-ci
+      - name: Deploy MinIO for backup tests
+        if: ${{ inputs.needs_minio }}
+        run: |
+          kubectl apply -f ./minio.yaml
+          kubectl wait -n minio --for=condition=Ready pod/minio --timeout=180s
+
+      - name: Deploy provider for CI
+        run: make deploy-provider-ci PXC_OPERATOR_REPLICA_COUNT=0
 
       - name: Deploy OpenEverest controller
         working-directory: _openeverest
@@ -83,17 +104,18 @@ jobs:
         working-directory: _openeverest
         run: make wait-test-controller
 
-      - name: Run ${{ inputs.make_target }}
+      - name: Run integration suite(s)
         run: make ${{ inputs.make_target }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload kuttl artifacts on failure
+      - name: Upload chainsaw report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: kuttl-${{ inputs.suite }}-${{ github.run_id }}
-          path: |
-            /tmp/kuttl-report*.xml
-            /tmp/kuttl-test*
+          name: chainsaw-${{ inputs.suite }}-${{ github.run_id }}
+          path: /tmp/chainsaw-report*.xml
           retention-days: 7
+
+      - name: Cleanup test cluster
+        if: always()
+        run: make k3d-cluster-down
+

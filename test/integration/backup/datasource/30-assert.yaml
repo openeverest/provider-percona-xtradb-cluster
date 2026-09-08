@@ -1,0 +1,21 @@
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Restore
+metadata:
+  name: src-restore
+spec:
+  dataSource:
+    type: Backup
+    backup:
+      backupRef:
+        name: src-backup
+  instanceRef:
+    name: src-pxc-cluster
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBClusterRestore
+metadata:
+  name: src-restore
+spec:
+  pxcCluster: src-pxc-cluster
+  backupName: src-backup
+

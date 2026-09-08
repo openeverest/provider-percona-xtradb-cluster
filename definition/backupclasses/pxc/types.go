@@ -6,15 +6,15 @@
 // +k8s:openapi-gen=true
 package pxc
 
-// PxcBackupConfig describes the parameters accepted by Backup CRs that
+// PxcBackupConfig describes the configuration accepted by Backup CRs that
 // target this class (spec.parameters). Add fields the user can set per backup.
 type PxcBackupConfig struct{}
 
-// PxcRestoreConfig describes the parameters accepted by Restore CRs that
+// PxcRestoreConfig describes the configuration accepted by Restore CRs that
 // target this class (spec.parameters). Add fields the user can set per restore.
 type PxcRestoreConfig struct{}
 
-// PxcPITRConfig describes the per-storage PITR parameters exposed to
+// PxcPITRConfig describes the per-storage PITR custom config exposed to
 // Instance.spec.backup.storages[].pitr.parameters. Add fields a provider needs
 // to fine-tune its PITR pipeline (oplog span, compression, retention, etc.).
 type PxcPITRConfig struct {

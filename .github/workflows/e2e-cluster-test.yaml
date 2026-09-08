@@ -1,0 +1,112 @@
+---
+# Reusable workflow — run one chainsaw e2e-cluster test suite inside a k3d cluster.
+# Unlike integration tests, e2e-cluster tests require the PXC operator to be running.
+# Called by ci.yaml; not triggered directly.
+name: E2E Cluster test
+
+on:
+  workflow_call:
+    inputs:
+      make_target:
+        description: 'Make target for the chainsaw suite (e.g. test-e2e-cluster-datasource-backup)'
+        type: string
+        required: true
+      suite:
+        description: 'Human-readable suite name used for artifact naming'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  IMG: provider-percona-xtradb-cluster:ci
+  # Branch of openeverest/openeverest to build the platform from.
+  OPENEVEREST_BRANCH: main
+
+jobs:
+  run:
+    name: ${{ inputs.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Checkout OpenEverest (v2)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: openeverest/openeverest
+          ref: ${{ env.OPENEVEREST_BRANCH }}
+          path: _openeverest
+
+      - name: Install Kubernetes tooling
+        uses: ./.github/actions/setup-k8s-tools
+        with:
+          install-k3d: 'true'
+          install-chainsaw: 'true'
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Create k3d cluster
+        run: |
+          sudo modprobe br_netfilter
+          make k3d-cluster-up
+
+      - name: Build provider image
+        run: make docker-build
+
+      - name: Import provider image into k3d
+        run: make load-image
+
+      - name: Build OpenEverest controller
+        working-directory: _openeverest
+        run: make build-controller
+
+      - name: Build OpenEverest controller Docker image
+        working-directory: _openeverest
+        run: make docker-build-controller
+
+      - name: Import OpenEverest controller image into k3d
+        run: make load-openeverest-controller-image
+
+      - name: Install CRDs
+        run: make install-crds
+        env:
+          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
+
+      - name: Deploy MinIO for backup tests
+        run: |
+          kubectl apply -f ./minio.yaml
+          kubectl wait -n minio --for=condition=Ready pod/minio --timeout=180s
+
+      - name: Deploy provider with PXC operator
+        run: make deploy-provider-e2e
+
+      - name: Deploy OpenEverest controller
+        working-directory: _openeverest
+        run: make deploy-test-controller
+
+      - name: Wait for OpenEverest deployment to be ready
+        working-directory: _openeverest
+        run: make wait-test-controller
+
+      - name: Run ${{ inputs.make_target }}
+        run: make ${{ inputs.make_target }}
+
+      - name: Upload chainsaw report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: chainsaw-${{ inputs.suite }}-${{ github.run_id }}
+          path: /tmp/chainsaw-report*.xml
+          retention-days: 7
+
+      - name: Cleanup test cluster
+        if: always()
+        run: make k3d-cluster-down

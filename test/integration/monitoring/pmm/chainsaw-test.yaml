@@ -1,0 +1,150 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: monitoring-pmm
+spec:
+  description: |
+    PMM 3 monitoring lifecycle for the PXC provider: attach a
+    MonitoringConfig, map it onto PerconaXtraDBCluster.spec.pmm (host, PMM 3
+    image, cluster name), propagate URL and credential updates, then disable
+    and re-enable monitoring.
+    The Percona operator is scaled to 0 so status is simulated.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com,monitoringconfig,secret -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+    - script:
+        content: |
+          for kind in pxc.pxc.percona.com instance; do
+            kubectl -n "$NAMESPACE" get "$kind" -o name 2>/dev/null | while read obj; do
+              kubectl -n "$NAMESPACE" patch "$obj" --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+            done
+          done
+  steps:
+    - name: setup-monitoring
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+        - apply:
+            file: 00-install.yaml
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-cluster
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    - name: cluster-ready
+      try:
+        - apply:
+            file: 11-cluster-ready.yaml
+        - script:
+            content: |
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 11-assert.yaml
+
+    - name: custom-monitoring-resources
+      try:
+        - apply:
+            file: 14-cluster-custom-monitoring-resource.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.pmm.resources.limits.cpu}'=500m --timeout=30s
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 14-assert.yaml
+
+    - name: update-monitoring-config
+      try:
+        - apply:
+            file: 20-update-config.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.pmm.serverHost}'=pmm-updated.example.invalid --timeout=30s
+        - assert:
+            file: 20-assert.yaml
+
+    - name: update-monitoring-credentials
+      try:
+        - apply:
+            file: 30-update-credentials.yaml
+        - script:
+            content: |
+              # Secrets are not watched; bump MonitoringConfig so Sync re-copies the token.
+              kubectl annotate monitoringconfig/test-pmm -n "$NAMESPACE" test.openeverest.io/reconcile="$(date +%s)" --overwrite
+              for i in $(seq 1 30); do
+                token=$(kubectl get secret/everest-secrets-test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.data.pmmservertoken}')
+                if [ "$token" = "YXNkZmcxMjM=" ]; then
+                  exit 0
+                fi
+                sleep 1
+              done
+              echo "pmmservertoken was not updated" >&2
+              exit 1
+        - assert:
+            file: 30-assert.yaml
+
+    - name: disable-monitoring
+      try:
+        - apply:
+            file: 40-disable-monitoring.yaml
+        - script:
+            content: |
+              kubectl patch instance/test-pxc-cluster -n "$NAMESPACE" --type=json \
+                -p '[{"op":"remove","path":"/spec/components/monitoring"}]' || true
+        - assert:
+            file: 40-assert.yaml
+
+    - name: enable-monitoring
+      try:
+        - apply:
+            file: 50-enable-monitoring.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.pmm.enabled}'=true --timeout=30s
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 50-assert.yaml
+
+    - name: delete-cluster
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete instance/test-pxc-cluster pxc.pxc.percona.com/test-pxc-cluster --wait=false --ignore-not-found && sleep 5
+              kubectl -n $NAMESPACE patch pxc.pxc.percona.com/test-pxc-cluster -p '{"metadata":{"finalizers":null}}' --type merge || true
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            name: test-pxc-cluster
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            name: test-pxc-cluster
+            for:
+              deletion: {}
+        - assert:
+            file: 60-assert.yaml
+

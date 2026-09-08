@@ -1,0 +1,52 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-cluster
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 3
+    proxy:
+      type: haproxy
+      replicas: 1
+    monitoring:
+      type: pmm
+      parameters:
+        monitoringConfigName: test-pmm
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: test-pxc-cluster
+spec:
+  pxc:
+    size: 3
+  haproxy:
+    enabled: true
+    size: 1
+  pmm:
+    enabled: true
+    serverHost: pmm.example.invalid
+    image: percona/pmm-client:3.8.0
+    customClusterName: test-pxc-cluster
+    imagePullPolicy: IfNotPresent
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-test-pxc-cluster
+type: Opaque
+data:
+  pmmservertoken: YWJjZGVm
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringConfig
+metadata:
+  name: test-pmm
+spec:
+  type: pmm
+  pmm:
+    url: http://pmm.example.invalid

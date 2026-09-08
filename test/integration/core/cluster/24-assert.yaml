@@ -1,0 +1,32 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-cluster
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 5
+      service:
+        serviceType: NodePort
+    proxy:
+      type: haproxy
+      replicas: 1
+status:
+  phase: Ready
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: test-pxc-cluster
+spec:
+  pxc:
+    size: 5
+status:
+  state: ready
+  pxc:
+    size: 5
+    ready: 5
+

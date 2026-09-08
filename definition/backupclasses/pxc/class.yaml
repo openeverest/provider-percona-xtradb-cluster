@@ -8,11 +8,10 @@
 #   providerManaged.supportsPITR: advertise PITR capability to Restore validation.
 #   providerManaged.limits: caps the runtime enforces against Instance.spec.backup.
 #     maxStorages, maxPITREnabledStorages, maxSchedulesPerStorage — unset means unlimited.
-#   providerManaged.pitrParametersSchema.openAPIV3Schema: Go type name (in this
-#     package) describing per-storage PITR parameters. Resolved to an OpenAPI
-#     schema at generation time.
-#   parametersSchema.openAPIV3Schema / restoreParametersSchema.openAPIV3Schema:
-#     Go type names describing backup-time and restore-time parameters respectively.
+#   providerManaged.pitrParametersSchema: Go type name (in this package) describing
+#     per-storage PITR custom parameters. Resolved to an OpenAPI schema at generation time.
+#   parametersSchema.openAPIV3Schema / restoreParametersSchema.openAPIV3Schema: Go type names
+#     describing backup-time and restore-time custom parameters respectively.
 #
 # Co-located files:
 #   ui.yaml  — free-form UI rendering hints, inlined verbatim under spec.uiSchema.
@@ -29,7 +28,7 @@ providerManaged:
     limits:
       maxPITREnabledStorages: 1
     pitrParametersSchema:
-        openAPIV3Schema: PxcPITRConfig
+      openAPIV3Schema: PxcPITRConfig
     supportsPITR: true
 restoreParametersSchema:
     openAPIV3Schema: PxcRestoreConfig

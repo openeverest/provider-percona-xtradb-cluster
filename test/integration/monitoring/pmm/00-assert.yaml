@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-percona-xtradb-cluster-operator
+  namespace: provider-system
+spec:
+  replicas: 0
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringConfig
+metadata:
+  name: test-pmm
+spec:
+  type: pmm
+  pmm:
+    credentialsSecretRef:
+      name: test-pmm-secret
+    verifyTLS: false
+    url: http://pmm.example.invalid
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-pmm-secret
+type: Opaque
+data:
+  apiKey: YWJjZGVm
+

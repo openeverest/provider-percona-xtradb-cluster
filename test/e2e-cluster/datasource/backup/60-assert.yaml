@@ -1,0 +1,14 @@
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBClusterBackup
+metadata:
+  name: pxc-src-backup
+status:
+  state: Succeeded
+---
+apiVersion: backup.openeverest.io/v1alpha1
+kind: Backup
+metadata:
+  name: pxc-src-backup
+status:
+  state: Succeeded
+

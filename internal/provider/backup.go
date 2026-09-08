@@ -546,7 +546,7 @@ func (p *PXCProvider) CleanupRestore(c *controller.Context, restore *backupv1alp
 	name := restore.Name
 
 	opRestore := &pxcv1.PerconaXtraDBClusterRestore{}
-	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: name}, opRestore)
+	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: restore.Namespace, Name: restore.Name}, opRestore)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return true, nil
