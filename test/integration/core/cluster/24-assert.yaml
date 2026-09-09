@@ -24,6 +24,9 @@ metadata:
 spec:
   pxc:
     size: 5
+  haproxy:
+    exposePrimary:
+      type: NodePort
 status:
   state: ready
   pxc:

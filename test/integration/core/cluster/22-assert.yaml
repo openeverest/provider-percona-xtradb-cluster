@@ -30,6 +30,14 @@ metadata:
 spec:
   pxc:
     size: 5
+  haproxy:
+    exposePrimary:
+      type: LoadBalancer
+      annotations:
+        test-annotation: "test-value"
+      loadBalancerSourceRanges:
+        - "10.0.0.0/8"
+        - "192.168.1.100/32"
 status:
   state: ready
   pxc:

@@ -29,6 +29,13 @@ metadata:
 spec:
   pxc:
     size: 5
+    affinity:
+      advanced:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
 status:
   state: ready
   pxc:

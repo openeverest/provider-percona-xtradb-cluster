@@ -258,6 +258,11 @@ func SyncPXC(c *controller.Context) error {
 			pvc.StorageClassName = engine.Storage.StorageClass
 		}
 	}
+	if engine.SchedulingPolicy != nil && engine.SchedulingPolicy.Affinity != nil {
+		pxc.Spec.PXC.Affinity = &pxcv1.PodAffinity{
+			Advanced: engine.SchedulingPolicy.Affinity,
+		}
+	}
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
 	if !ok || proxy.Type == "" || proxy.Replicas == nil {
@@ -286,6 +291,8 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.HAProxy.Size = proxyReplicas
 		pxc.Spec.ProxySQL = nil
 	}
+
+	applyServiceExpose(pxc, engine, proxy)
 
 	var proxyReplicasPtr *int32
 	if pxc.Spec.ProxySQLEnabled() {
@@ -777,4 +784,34 @@ func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (str
 		return "", fmt.Errorf("decode engine component parameters: %w", err)
 	}
 	return cfg.Configuration, nil
+}
+
+func applyServiceExpose(pxc *pxcv1.PerconaXtraDBCluster, engine, proxy corev1alpha1.ComponentSpec) {
+	svc := engine.Service
+	if proxy.Service != nil {
+		svc = proxy.Service
+	}
+	if svc == nil {
+		return
+	}
+
+	expose := pxcv1.ServiceExpose{
+		Type: svc.ServiceType,
+	}
+	if len(svc.Annotations) > 0 {
+		expose.Annotations = svc.Annotations
+	}
+	if svc.LoadBalancerService != nil {
+		ranges := svc.LoadBalancerService.SourceRanges.NormalizedSourceRanges()
+		if len(ranges) > 0 {
+			expose.LoadBalancerSourceRanges = []string(ranges)
+		}
+	}
+
+	switch {
+	case pxc.Spec.HAProxyEnabled():
+		pxc.Spec.HAProxy.ExposePrimary = expose
+	case pxc.Spec.ProxySQLEnabled():
+		pxc.Spec.ProxySQL.Expose = expose
+	}
 }
