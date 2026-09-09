@@ -22,4 +22,4 @@ spec:
     proxy:
       type: haproxy
       replicas: 1
-
+    monitoring:

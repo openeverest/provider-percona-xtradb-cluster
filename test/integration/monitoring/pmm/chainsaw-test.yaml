@@ -106,10 +106,6 @@ spec:
       try:
         - apply:
             file: 40-disable-monitoring.yaml
-        - script:
-            content: |
-              kubectl patch instance/test-pxc-cluster -n "$NAMESPACE" --type=json \
-                -p '[{"op":"remove","path":"/spec/components/monitoring"}]' || true
         - assert:
             file: 40-assert.yaml
 
@@ -147,4 +143,3 @@ spec:
               deletion: {}
         - assert:
             file: 60-assert.yaml
-
