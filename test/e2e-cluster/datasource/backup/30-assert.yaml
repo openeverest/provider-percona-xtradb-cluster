@@ -27,10 +27,10 @@ spec:
       resources:
         limits:
           cpu: 600m
-          memory: 512Mi
+          memory: 1Gi
         requests:
           cpu: 600m
-          memory: 512Mi
+          memory: 1Gi
     proxy:
       type: haproxy
       replicas: 1
@@ -39,4 +39,3 @@ apiVersion: pxc.percona.com/v1
 kind: PerconaXtraDBCluster
 metadata:
   name: pxc-src
-
