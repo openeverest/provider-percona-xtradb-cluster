@@ -169,7 +169,20 @@ docker_build_with_restart(
 # image.repository/image.tag values and live-updates the running pod. Using
 # helm_resource also guarantees the Provider CR is applied only after the core
 # CRDs exist.
-provider_resource_deps = ['provider-build']
+#
+# The pxc-operator subchart is not vendored in git; fetch it before install
+# (same as `make deploy-provider-ci`).
+local_resource(
+    'provider-chart-deps',
+    'helm dependency build {0}'.format(chart_dir),
+    deps=[
+        '{0}/Chart.yaml'.format(chart_dir),
+        '{0}/Chart.lock'.format(chart_dir),
+    ],
+    labels=['provider'],
+)
+
+provider_resource_deps = ['provider-build', 'provider-chart-deps']
 if install_openeverest:
     provider_resource_deps = provider_resource_deps + ['openeverest']
 

@@ -315,14 +315,7 @@ func SyncPXC(c *controller.Context) error {
 	if engineConfig != "" {
 		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
-		switch *engine.Replicas {
-		case 1:
-			pxc.Spec.PXC.Configuration = pxcConfigSizeSmall
-		case 3:
-			pxc.Spec.PXC.Configuration = pxcConfigSizeMedium
-		default:
-			pxc.Spec.PXC.Configuration = pxcConfigSizeLarge
-		}
+		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(*engine.Replicas, engine.Resources)
 	}
 
 	// Set the image: use the user-specified image if provided, otherwise resolve

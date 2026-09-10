@@ -74,6 +74,9 @@ spec:
               kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp | tail -50
               kubectl -n "${NAMESPACE}" describe pxc.pxc.percona.com/pxc-src || true
               kubectl -n "${NAMESPACE}" describe instance/pxc-src || true
+              kubectl -n "${NAMESPACE}" describe pod -l app.kubernetes.io/component=pxc || true
+              kubectl -n "${NAMESPACE}" logs -l app.kubernetes.io/component=pxc -c pxc --tail=80 || true
+              kubectl -n "${NAMESPACE}" get pxc.pxc.percona.com/pxc-src -o jsonpath='{.spec.pxc.configuration}' || true
 
     - name: create-source-mysql-client
       try:
