@@ -144,11 +144,15 @@ jobs:
       needs_minio: true
     secrets: inherit
 
-  test-e2e-cluster:
-    name: E2E tests
-    needs: [lint, build, verify, helm-lint]
-    uses: ./.github/workflows/e2e-cluster-test.yaml
-    with:
-      make_target: test-e2e-cluster
-      suite: e2e
-    secrets: inherit
+  # e2e-cluster is not run on CI: a real PXC 8.4 pod (plus HAProxy, MinIO,
+  # k3d, and operators) does not fit on a default GitHub-hosted runner
+  # (2 vCPU / 7 GiB). Run locally with `make deploy-provider-e2e` then
+  # `make test-e2e-cluster`.
+  # test-e2e-cluster:
+  #   name: E2E tests
+  #   needs: [lint, build, verify, helm-lint]
+  #   uses: ./.github/workflows/e2e-cluster-test.yaml
+  #   with:
+  #     make_target: test-e2e-cluster
+  #     suite: e2e
+  #   secrets: inherit
