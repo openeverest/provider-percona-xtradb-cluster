@@ -16,6 +16,7 @@ components:
     parametersSchema: PXCParameters
   proxy:
     type: haproxy
+    parametersSchema: ProxyParameters
   backup:
     type: backup
   monitoring:

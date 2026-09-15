@@ -274,6 +274,10 @@ func SyncPXC(c *controller.Context) error {
 	}
 	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas, proxyReplicasPtr)
 
+	var proxyParams components.ProxyParameters
+	c.TryDecodeComponentParameters(proxy, &proxyParams)
+	applyProxyExpose(pxc, proxyType, proxyParams.Expose)
+
 	spec, err := c.ProviderSpec()
 	if err != nil {
 		return err
@@ -485,6 +489,27 @@ func dataSourceInstanceName(c *controller.Context) (string, error) {
 		return ds.PointInTime.Source.InstanceRef.Name, nil
 	default:
 		return "", nil
+	}
+}
+
+// applyProxyExpose configures the proxy Service's expose settings (e.g. Type:
+// LoadBalancer for a public IP) on whichever proxy is active. A nil expose
+// leaves the operator defaults (ClusterIP) in place.
+func applyProxyExpose(pxc *pxcv1.PerconaXtraDBCluster, proxyType string, expose *components.Expose) {
+	if expose == nil {
+		return
+	}
+
+	serviceExpose := pxcv1.ServiceExpose{
+		Type:                     corev1.ServiceType(expose.Type),
+		LoadBalancerSourceRanges: expose.LoadBalancerSourceRanges,
+	}
+
+	switch proxyType {
+	case common.ProxyTypeHAProxy:
+		pxc.Spec.HAProxy.ExposePrimary = serviceExpose
+	case common.ProxyTypeProxySQL:
+		pxc.Spec.ProxySQL.Expose = serviceExpose
 	}
 }
 

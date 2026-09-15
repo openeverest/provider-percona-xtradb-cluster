@@ -77,6 +77,19 @@ spec:
           type: object
       type: pmm
     proxy:
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            expose:
+              properties:
+                loadBalancerSourceRanges:
+                  items:
+                    type: string
+                  type: array
+                type:
+                  type: string
+              type: object
+          type: object
       type: haproxy
   topologies:
     cluster:
@@ -200,6 +213,19 @@ spec:
           label: Monitoring
         proxy:
           components:
+            proxyExposeType:
+              fieldParams:
+                defaultValue: ClusterIP
+                label: Proxy service exposure
+                options:
+                  - label: Internal only (ClusterIP)
+                    value: ClusterIP
+                  - label: Node port (NodePort)
+                    value: NodePort
+                  - label: Public/external IP (LoadBalancer)
+                    value: LoadBalancer
+              path: spec.components.proxy.parameters.expose.type
+              uiType: select
             proxyNodes:
               fieldParams:
                 defaultValue: 2
@@ -226,6 +252,7 @@ spec:
           componentsOrder:
             - proxyType
             - proxyNodes
+            - proxyExposeType
           description: Configure a single proxy type for the cluster.
           label: Proxy
         resources:

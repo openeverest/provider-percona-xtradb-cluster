@@ -39,3 +39,22 @@ type PMMParameters struct {
 	// If not specified, monitoring will not be configured.
 	MonitoringConfigName *string `json:"monitoringConfigName,omitempty"`
 }
+
+// ProxyParameters defines structured parameters for proxy components (HAProxy/ProxySQL).
+type ProxyParameters struct {
+	// Expose configures how the proxy Service is exposed, e.g. to obtain a
+	// public/external IP via a cloud load balancer.
+	Expose *Expose `json:"expose,omitempty"`
+}
+
+// Expose mirrors the relevant fields of the upstream operator's ServiceExpose.
+type Expose struct {
+	// Type is the Kubernetes Service type: ClusterIP, NodePort or LoadBalancer.
+	// Defaults to ClusterIP (internal only) when omitted.
+	// +kubebuilder:validation:Enum=ClusterIP;NodePort;LoadBalancer
+	Type string `json:"type,omitempty"`
+
+	// LoadBalancerSourceRanges restricts which client IPs can reach the
+	// Service when Type is LoadBalancer. Ignored otherwise.
+	LoadBalancerSourceRanges []string `json:"loadBalancerSourceRanges,omitempty"`
+}

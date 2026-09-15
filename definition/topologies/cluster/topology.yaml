@@ -138,9 +138,23 @@ ui:
             min: 1
             int: true
             required: true
+        proxyExposeType:
+          uiType: select
+          path: spec.components.proxy.parameters.expose.type
+          fieldParams:
+            label: "Proxy service exposure"
+            defaultValue: "ClusterIP"
+            options:
+              - label: "Internal only (ClusterIP)"
+                value: "ClusterIP"
+              - label: "Node port (NodePort)"
+                value: "NodePort"
+              - label: "Public/external IP (LoadBalancer)"
+                value: "LoadBalancer"
       componentsOrder:
         - proxyType
         - proxyNodes
+        - proxyExposeType
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced PXC settings."
