@@ -5,11 +5,8 @@
 #   backup  — on-demand backup modal (fields backed by parametersSchema.openAPIV3Schema).
 #   pitr    — per-storage PITR sub-form (fields backed by providerManaged.pitrParametersSchema).
 #   restore — restore modal (fields backed by restoreParametersSchema.openAPIV3Schema).
+# Omit backup/restore when there are no fields; empty forms cause invalid schema in the UI.
 
-backup:
-  label: Backup Configuration
-  componentsOrder: []
-  components: {}
 pitr:
   label: PITR Configuration
   componentsOrder:
@@ -32,7 +29,3 @@ pitr:
         defaultValue: 3600
       validation:
         min: 1
-restore:
-  label: Restore Configuration
-  componentsOrder: []
-  components: {}
