@@ -161,6 +161,34 @@ Credentials are in the secret named by `.status.connection.credentialsSecretRef`
 The `proxy` component defaults to HAProxy; ProxySQL images are also catalogued. The
 `monitoring` component is optional.
 
+### Exposing the proxy
+
+`spec.components.proxy.parameters.expose` controls how the proxy Service is published,
+and maps onto `HAProxy.ExposePrimary` or `ProxySQL.Expose` depending on the proxy type:
+
+```yaml
+components:
+  proxy:
+    type: haproxy
+    parameters:
+      expose:
+        type: LoadBalancer
+        loadBalancerSourceRanges:
+          - 203.0.113.0/24
+```
+
+`type` accepts `ClusterIP` (the default when omitted), `NodePort` or `LoadBalancer`.
+
+`loadBalancerSourceRanges` restricts which client CIDRs can reach the load balancer;
+**a `LoadBalancer` proxy with no source ranges is reachable from anywhere.** It requires
+`type: LoadBalancer` — Kubernetes rejects the field on any other Service type, so the
+provider fails the reconcile with an explicit error rather than silently dropping the
+restriction.
+
+Only `expose.type` has an Everest UI control. `loadBalancerSourceRanges` is set by
+applying the Instance directly, because the Everest UI generator has no array field
+type and will not bind a path that points into an array.
+
 ## Versions
 
 <!-- BEGIN GENERATED: versions -->

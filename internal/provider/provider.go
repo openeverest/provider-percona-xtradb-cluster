@@ -276,7 +276,9 @@ func SyncPXC(c *controller.Context) error {
 
 	var proxyParams components.ProxyParameters
 	c.TryDecodeComponentParameters(proxy, &proxyParams)
-	applyProxyExpose(pxc, proxyType, proxyParams.Expose)
+	if err := applyProxyExpose(pxc, proxyType, proxyParams.Expose); err != nil {
+		return err
+	}
 
 	spec, err := c.ProviderSpec()
 	if err != nil {
@@ -493,11 +495,21 @@ func dataSourceInstanceName(c *controller.Context) (string, error) {
 }
 
 // applyProxyExpose configures the proxy Service's expose settings (e.g. Type:
-// LoadBalancer for a public IP) on whichever proxy is active. A nil expose
-// leaves the operator defaults (ClusterIP) in place.
-func applyProxyExpose(pxc *pxcv1.PerconaXtraDBCluster, proxyType string, expose *components.Expose) {
+// LoadBalancer for a public IP, restricted to a set of client CIDRs) on
+// whichever proxy is active. A nil expose leaves the operator defaults
+// (ClusterIP) in place.
+//
+// The expose parameters are validated here rather than by kubebuilder markers:
+// the provider-spec generator derives the parameters schema from the Go types
+// alone and drops validation markers, so nothing rejects a bad value before it
+// reaches us.
+func applyProxyExpose(pxc *pxcv1.PerconaXtraDBCluster, proxyType string, expose *components.Expose) error {
 	if expose == nil {
-		return
+		return nil
+	}
+
+	if err := validateExpose(expose); err != nil {
+		return err
 	}
 
 	serviceExpose := pxcv1.ServiceExpose{
@@ -511,6 +523,44 @@ func applyProxyExpose(pxc *pxcv1.PerconaXtraDBCluster, proxyType string, expose 
 	case common.ProxyTypeProxySQL:
 		pxc.Spec.ProxySQL.Expose = serviceExpose
 	}
+
+	return nil
+}
+
+// validateExpose rejects proxy expose settings that Kubernetes would refuse
+// further down, where the failure surfaces as an opaque Service validation
+// error on the operator's CR instead of on the Instance the user wrote.
+func validateExpose(expose *components.Expose) error {
+	switch corev1.ServiceType(expose.Type) {
+	case "", corev1.ServiceTypeClusterIP, corev1.ServiceTypeNodePort, corev1.ServiceTypeLoadBalancer:
+	default:
+		return fmt.Errorf(
+			"proxy expose.type %q is not supported, must be one of ClusterIP, NodePort or LoadBalancer",
+			expose.Type,
+		)
+	}
+
+	if len(expose.LoadBalancerSourceRanges) == 0 {
+		return nil
+	}
+
+	// Kubernetes only accepts loadBalancerSourceRanges on a LoadBalancer
+	// Service. Silently dropping them would hand the user a proxy that is
+	// reachable from anywhere when they asked for the opposite, so fail loudly.
+	if corev1.ServiceType(expose.Type) != corev1.ServiceTypeLoadBalancer {
+		return fmt.Errorf(
+			"proxy expose.loadBalancerSourceRanges requires expose.type LoadBalancer, got %q",
+			expose.Type,
+		)
+	}
+
+	for _, cidr := range expose.LoadBalancerSourceRanges {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(cidr)); err != nil {
+			return fmt.Errorf("proxy expose.loadBalancerSourceRanges entry %q is not a valid CIDR", cidr)
+		}
+	}
+
+	return nil
 }
 
 // unsafeFlags returns pxcv1.UnsafeFlags considering the given replicas configuration.

@@ -51,10 +51,18 @@ type ProxyParameters struct {
 type Expose struct {
 	// Type is the Kubernetes Service type: ClusterIP, NodePort or LoadBalancer.
 	// Defaults to ClusterIP (internal only) when omitted.
-	// +kubebuilder:validation:Enum=ClusterIP;NodePort;LoadBalancer
+	//
+	// Validation markers are not honoured here: the provider-spec generator
+	// derives the parameters schema from these types and drops them. The
+	// accepted values are enforced by validateExpose in internal/provider.
 	Type string `json:"type,omitempty"`
 
 	// LoadBalancerSourceRanges restricts which client IPs can reach the
-	// Service when Type is LoadBalancer. Ignored otherwise.
+	// Service, as a list of CIDRs. Requires Type LoadBalancer; setting it with
+	// any other Type is rejected rather than ignored, since an ignored
+	// restriction would leave the proxy open to the world.
+	//
+	// This field has no Everest UI control -- the UI generator cannot bind
+	// array-valued paths -- so it is set by applying the Instance directly.
 	LoadBalancerSourceRanges []string `json:"loadBalancerSourceRanges,omitempty"`
 }

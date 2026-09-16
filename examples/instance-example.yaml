@@ -28,6 +28,12 @@ spec:
       parameters:
         expose:
           type: LoadBalancer
+          # Restrict which clients can reach the load balancer. Requires
+          # type: LoadBalancer -- any other type is rejected rather than
+          # ignored. Without this the proxy is open to the whole internet.
+          #
+          # There is no Everest UI control for this list (the UI generator
+          # cannot bind array fields), so set it by applying the Instance.
           loadBalancerSourceRanges:
             - 203.0.113.0/24
   deletionPolicy: Cascade
