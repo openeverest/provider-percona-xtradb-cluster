@@ -772,7 +772,7 @@ func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (str
 	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
 		return "", nil
 	}
-	cfg := &components.PxcParameters{}
+	cfg := &components.PXCParameters{}
 	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
 		return "", fmt.Errorf("decode engine component parameters: %w", err)
 	}

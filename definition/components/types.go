@@ -16,22 +16,24 @@
 //
 // Each struct here corresponds to a component type defined in versions.yaml
 // and is converted to an OpenAPI schema during generation.
-// Add fields when a component type needs custom parameters beyond
+// Add fields when a component type needs structured parameters beyond
 // what the base Instance spec provides.
 //
 // +k8s:openapi-gen=true
 package components
 
-// PxcParameters defines custom parameters for PXC engine components.
-// Add fields here when the pxc component type needs custom parameters
-// beyond what the base Instance spec provides.
-type PxcParameters struct {
-	// Configuration is MySQL/PXC configuration file content applied to the engine.
+// PXCParameters defines structured parameters for PXC engine components.
+// This struct is converted to OpenAPI schema and served via the /schema endpoint.
+// Provider users can specify these fields in the Instance's component parameters.
+type PXCParameters struct {
+	// Configuration is the raw my.cnf-style engine configuration file content.
+	// `configuration` is the conventional property name for the engine
+	// configuration file inside a component's parameters schema.
 	Configuration string `json:"configuration,omitempty"`
 }
 
-// PmmParameters defines custom parameters for PMM monitoring.
-type PmmParameters struct {
+// PMMParameters defines structured parameters for PMM monitoring.
+type PMMParameters struct {
 	// MonitoringConfigName specifies the name of the MonitoringConfig resource
 	// to use for configuring PMM monitoring.
 	// If not specified, monitoring will not be configured.

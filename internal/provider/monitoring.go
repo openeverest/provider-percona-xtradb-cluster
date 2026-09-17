@@ -92,7 +92,7 @@ func monitoringConfigNameFromComponent(component corev1alpha1.ComponentSpec) (st
 		return "", nil
 	}
 
-	cfg := &components.PmmParameters{}
+	cfg := &components.PMMParameters{}
 	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
 		return "", fmt.Errorf("decode monitoring component parameters: %w", err)
 	}

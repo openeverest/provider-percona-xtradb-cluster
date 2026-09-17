@@ -25,5 +25,6 @@ const (
 	TopologyTypeCluster TopologyType = "cluster"
 )
 
-// GlobalConfig defines global configuration that applies to the entire cluster.
-type GlobalConfig struct{}
+// Parameters defines provider-level structured parameters that apply to the
+// entire cluster (Instance.spec.parameters).
+type Parameters struct{}
