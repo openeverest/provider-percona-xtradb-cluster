@@ -1,0 +1,49 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: src-pxc-cluster
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  backup:
+    enabled: true
+    classRef:
+      name: pxc
+    storages:
+    - storageRef:
+        name: test-storage-s3
+      schedules:
+      - name: full
+        enabled: true
+        cron: "0 2 * * *"
+  components:
+    engine:
+      type: pxc
+      replicas: 3
+    proxy:
+      type: haproxy
+      replicas: 1
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: src-pxc-cluster
+spec:
+  pxc:
+    size: 3
+  haproxy:
+    enabled: true
+    size: 1
+  backup:
+    storages:
+      test-storage-s3:
+        type: s3
+        s3:
+          region: us-east-1
+          endpointUrl: http://fake
+          credentialsSecret: backup-storage-credentials
+    schedule:
+      - name: full
+        schedule: "0 2 * * *"
+        storageName: test-storage-s3
+
