@@ -79,25 +79,26 @@ Stateful workloads additionally report:
 
 ## Installation
 
-> [!NOTE]
-> There is no published chart yet. Until the first release, install from a checkout.
+The provider chart is published as an OCI artifact to GitHub Container Registry:
 
 ```bash
-git clone https://github.com/openeverest/provider-percona-xtradb-cluster.git
-cd provider-percona-xtradb-cluster
-helm dependency build charts/provider-percona-xtradb-cluster
-helm install provider-percona-xtradb-cluster charts/provider-percona-xtradb-cluster \
+helm install provider-percona-xtradb-cluster \
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster \
+  --version 0.2.0 \
   --namespace everest-system
 ```
-
-`make helm-install` does the same thing against your current kube context.
 
 - The Percona Operator for MySQL is bundled as a chart dependency and is installed
   automatically.
 
-Uninstall:
+To install from a checkout instead, `make helm-install` builds the chart dependencies
+and installs it against your current kube context.
+
+Upgrade and uninstall:
 
 ```bash
+helm upgrade provider-percona-xtradb-cluster \
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.2.0
 helm uninstall provider-percona-xtradb-cluster --namespace everest-system
 ```
 
