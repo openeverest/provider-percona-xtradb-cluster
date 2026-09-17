@@ -90,8 +90,8 @@ jobs:
       - name: Deploy MinIO for backup tests
         if: ${{ inputs.needs_minio }}
         run: |
-          kubectl apply -f ./minio.yaml
-          kubectl wait -n minio --for=condition=Ready pod/minio --timeout=180s
+          kubectl apply -f ./dev/resources/minio.yaml
+          kubectl wait --for=condition=available deployment/minio -n minio --timeout=180s
 
       - name: Deploy provider for CI
         run: make deploy-provider-ci PXC_OPERATOR_REPLICA_COUNT=0
@@ -118,4 +118,3 @@ jobs:
       - name: Cleanup test cluster
         if: always()
         run: make k3d-cluster-down
-
