@@ -27,16 +27,13 @@ spec:
       try:
         - script:
             content: |
-              # Use the cluster Minio manifest, not testdata/minio (different PVC/spec).
-              kubectl apply -f ${OPERATOR_ROOT_PATH}/minio.yaml
-              kubectl wait pod/minio --for=condition=Ready -n minio --timeout=120s
-              # env-up / minio.yaml only create bucket-1..6; BackupStorage uses everest-operator.
-              kubectl exec -n minio minio -c minio -- mkdir -p /data/everest-operator
+              kubectl apply -f ${OPERATOR_ROOT_PATH}/dev/resources/minio.yaml
+              kubectl wait --for=condition=available deployment/minio -n minio --timeout=120s
       catch:
         - script:
             content: kubectl get pods -n minio -o yaml
         - script:
-            content: kubectl logs -n minio minio -c minio --tail=50
+            content: kubectl logs -n minio -l app=minio -c minio --tail=50
 
     - name: setup-backup
       try:
