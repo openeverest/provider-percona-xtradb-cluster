@@ -1,0 +1,10 @@
+---
+# Create the credentials secret so the Instance can reach Ready.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-test-pxc-cluster
+type: Opaque
+stringData:
+  root: test-password
+

@@ -1,4 +1,23 @@
+// Copyright (C) 2026 The OpenEverest Contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package provider
+
+import (
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+)
 
 const (
 	// A pxcConfigSizeSmall is the configuration for PXC cluster with the dimension of 1 vCPU and 2GB RAM.
@@ -143,4 +162,51 @@ wsrep_trx_fragment_size = 1048576
 wsrep_trx_fragment_unit = bytes
 wsrep-provider-options = evs.delayed_keep_period=PT560S;evs.stats_report_period=PT1M;gcs.fc_limit=128;gmcast.peer_timeout=PT15S;gmcast.time_wait=PT18S;evs.max_install_timeouts=5;pc.recovery=true;gcache.recover=yes;gcache.size=8989366809;evs.delay_margin=PT30S;evs.user_send_window=1024;evs.inactive_check_period=PT5S;evs.join_retrans_period=PT5S;evs.suspect_timeout=PT60S;gcs.max_packet_size=131072;pc.linger=PT60S;evs.send_window=1024;evs.inactive_timeout=PT120S;pc.announce_timeout=PT60S;
 	`
+	// pxcConfigSizeTiny is for pods smaller than 2Gi (e.g. CI). Image defaults
+	// still use a 128M gcache and can OOM or fill a small PVC.
+	pxcConfigSizeTiny = `[mysqld]
+binlog_format = ROW
+innodb_buffer_pool_size = 128M
+innodb_buffer_pool_instances = 1
+innodb_buffer_pool_chunk_size = 2097152
+innodb_redo_log_capacity = 32M
+max_connections = 50
+wsrep-provider-options = gcache.size=32M;gcache.recover=yes;
+`
 )
+
+var (
+	pxcMemSmall  = resource.MustParse("2Gi")
+	pxcMemMedium = resource.MustParse("8Gi")
+	pxcMemLarge  = resource.MustParse("32Gi")
+)
+
+func memoryLimitOrRequest(resources *corev1.ResourceRequirements) resource.Quantity {
+	if resources == nil {
+		return resource.Quantity{}
+	}
+	if q, ok := resources.Limits[corev1.ResourceMemory]; ok && !q.IsZero() {
+		return q
+	}
+	if q, ok := resources.Requests[corev1.ResourceMemory]; ok {
+		return q
+	}
+	return resource.Quantity{}
+}
+
+// defaultConfigurationForEngine picks a my.cnf preset from replica count and
+// engine memory. Small/medium/large assume 2Gi / 8Gi / 32Gi; anything smaller
+// gets tiny so the buffer pool fits the pod.
+func defaultConfigurationForEngine(replicas int32, resources *corev1.ResourceRequirements) string {
+	mem := memoryLimitOrRequest(resources)
+	switch {
+	case replicas != 1 && replicas != 3 && mem.Cmp(pxcMemLarge) >= 0:
+		return pxcConfigSizeLarge
+	case replicas == 3 && mem.Cmp(pxcMemMedium) >= 0:
+		return pxcConfigSizeMedium
+	case mem.Cmp(pxcMemSmall) >= 0:
+		return pxcConfigSizeSmall
+	default:
+		return pxcConfigSizeTiny
+	}
+}

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-pmm-secret
+type: Opaque
+data:
+  apiKey: YXNkZmcxMjM=
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-test-pxc-cluster
+type: Opaque
+data:
+  pmmservertoken: YXNkZmcxMjM=
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: test-pxc-cluster
+spec:
+  pmm:
+    enabled: true
+    serverHost: pmm-updated.example.invalid
+    image: percona/pmm-client:3.8.0
+

@@ -16,6 +16,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -236,6 +237,32 @@ func SyncPXC(c *controller.Context) error {
 		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
 	}
 	pxc.Spec.PXC.Size = *engine.Replicas
+	if engine.Resources != nil {
+		pxc.Spec.PXC.Resources = *engine.Resources
+	}
+	if engine.Storage != nil {
+		if pxc.Spec.PXC.VolumeSpec == nil {
+			pxc.Spec.PXC.VolumeSpec = &pxcv1.VolumeSpec{}
+		}
+		if pxc.Spec.PXC.VolumeSpec.PersistentVolumeClaim == nil {
+			pxc.Spec.PXC.VolumeSpec.PersistentVolumeClaim = &corev1.PersistentVolumeClaimSpec{}
+		}
+		pvc := pxc.Spec.PXC.VolumeSpec.PersistentVolumeClaim
+		if pvc.Resources.Requests == nil {
+			pvc.Resources.Requests = corev1.ResourceList{}
+		}
+		if !engine.Storage.Size.IsZero() {
+			pvc.Resources.Requests[corev1.ResourceStorage] = engine.Storage.Size
+		}
+		if engine.Storage.StorageClass != nil && *engine.Storage.StorageClass != "" {
+			pvc.StorageClassName = engine.Storage.StorageClass
+		}
+	}
+	if engine.SchedulingPolicy != nil && engine.SchedulingPolicy.Affinity != nil {
+		pxc.Spec.PXC.Affinity = &pxcv1.PodAffinity{
+			Advanced: engine.SchedulingPolicy.Affinity,
+		}
+	}
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
 	if !ok || proxy.Type == "" || proxy.Replicas == nil {
@@ -265,6 +292,8 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.ProxySQL = nil
 	}
 
+	applyServiceExpose(pxc, engine, proxy)
+
 	var proxyReplicasPtr *int32
 	if pxc.Spec.ProxySQLEnabled() {
 		proxyReplicasPtr = &pxc.Spec.ProxySQL.Size
@@ -279,21 +308,14 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
-	// The engine configuration file is carried inside the engine component's
-	// parameters; `configuration` is the conventional property name for it.
-	var engineParams components.PXCParameters
-	c.TryDecodeComponentParameters(engine, &engineParams)
-	if engineParams.Configuration != "" {
-		pxc.Spec.PXC.Configuration = engineParams.Configuration
+	engineConfig, cfgErr := engineConfigurationFromComponent(engine)
+	if cfgErr != nil {
+		return cfgErr
+	}
+	if engineConfig != "" {
+		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
-		switch *engine.Replicas {
-		case 1:
-			pxc.Spec.PXC.Configuration = pxcConfigSizeSmall
-		case 3:
-			pxc.Spec.PXC.Configuration = pxcConfigSizeMedium
-		default:
-			pxc.Spec.PXC.Configuration = pxcConfigSizeLarge
-		}
+		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(*engine.Replicas, engine.Resources)
 	}
 
 	// Set the image: use the user-specified image if provided, otherwise resolve
@@ -745,3 +767,44 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 var _ controller.ProviderInterface = (*PXCProvider)(nil)
 var _ controller.WatchProvider = (*PXCProvider)(nil)
 var _ controller.FieldIndexProvider = (*PXCProvider)(nil)
+
+func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
+	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
+		return "", nil
+	}
+	cfg := &components.PXCParameters{}
+	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
+		return "", fmt.Errorf("decode engine component parameters: %w", err)
+	}
+	return cfg.Configuration, nil
+}
+
+func applyServiceExpose(pxc *pxcv1.PerconaXtraDBCluster, engine, proxy corev1alpha1.ComponentSpec) {
+	svc := engine.Service
+	if proxy.Service != nil {
+		svc = proxy.Service
+	}
+	if svc == nil {
+		return
+	}
+
+	expose := pxcv1.ServiceExpose{
+		Type: svc.ServiceType,
+	}
+	if len(svc.Annotations) > 0 {
+		expose.Annotations = svc.Annotations
+	}
+	if svc.LoadBalancerService != nil {
+		ranges := svc.LoadBalancerService.SourceRanges.NormalizedSourceRanges()
+		if len(ranges) > 0 {
+			expose.LoadBalancerSourceRanges = []string(ranges)
+		}
+	}
+
+	switch {
+	case pxc.Spec.HAProxyEnabled():
+		pxc.Spec.HAProxy.ExposePrimary = expose
+	case pxc.Spec.ProxySQLEnabled():
+		pxc.Spec.ProxySQL.Expose = expose
+	}
+}

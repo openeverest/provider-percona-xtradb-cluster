@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# Local OpenEverest checkout used by make test-integration-env-up
+_openeverest/
+
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/

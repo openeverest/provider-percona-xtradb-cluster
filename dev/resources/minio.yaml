@@ -1,7 +1,12 @@
 # Minimal MinIO deployment for local backup/restore testing.
 #
-# Deployed by dev/Tiltfile when ENABLE_MINIO=true. Exposes an S3-compatible
-# endpoint at http://minio.minio.svc.cluster.local:9000 and a console on :9090.
+# Used by:
+#   - dev/Tiltfile when ENABLE_MINIO=true
+#   - test/e2e-cluster/datasource/backup (chainsaw)
+#
+# Exposes an S3-compatible endpoint at
+# http://minio.minio.svc.cluster.local:9000 and a console on :9090.
+# Filesystem buckets: backups (Tilt), everest-operator (e2e).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -44,7 +49,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - mkdir -p /data/backups
+            - mkdir -p /data/backups /data/everest-operator
           volumeMounts:
             - mountPath: /data
               name: minio-data-vol

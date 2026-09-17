@@ -1,39 +1,39 @@
 ---
 name: 'Setup Kubernetes Tools'
-description: 'Install k3d, kuttl, and kubectl with checksum verification'
+description: 'Install k3d, chainsaw, and optionally kubectl with checksum verification'
 
 inputs:
   tools-path:
-    description: 'Directory to install binaries into'
+    description: Directory to install binaries into
     required: false
-    default: '/opt/tools/bin'
+    default: /opt/tools/bin
 
   install-kubectl:
-    description: 'Install kubectl (GitHub-hosted runners ship a version; use this for a pinned one)'
+    description: Install kubectl
     required: false
     default: 'false'
   kubectl-version:
-    description: 'kubectl version (without the leading v)'
+    description: kubectl version without the leading v
     required: false
-    default: '1.31.0'
+    default: 1.31.0
 
-  install-kuttl:
-    description: 'Install kubectl-kuttl'
+  install-chainsaw:
+    description: Install chainsaw
     required: false
     default: 'false'
-  kuttl-version:
-    description: 'kuttl version (without the leading v)'
+  chainsaw-version:
+    description: chainsaw version without the leading v
     required: false
-    default: '0.25.0'
+    default: 0.2.15
 
   install-k3d:
-    description: 'Install k3d'
+    description: Install k3d
     required: false
     default: 'false'
   k3d-version:
-    description: 'k3d version (without the leading v)'
+    description: k3d version without the leading v
     required: false
-    default: '5.8.3'
+    default: 5.8.3
 
 runs:
   using: composite
@@ -53,34 +53,33 @@ runs:
         BASE="https://dl.k8s.io/release/v${VERSION}/bin/linux/${ARCH}"
         DEST="${{ inputs.tools-path }}/kubectl"
 
-        curl -fsSL -o "${DEST}"         "${BASE}/kubectl"
-        curl -fsSL -o "${DEST}.sha256"  "${BASE}/kubectl.sha256"
+        curl -fsSL -o "${DEST}" "${BASE}/kubectl"
+        curl -fsSL -o "${DEST}.sha256" "${BASE}/kubectl.sha256"
         echo "$(cat "${DEST}.sha256")  ${DEST}" | sha256sum --check --status
         rm "${DEST}.sha256"
         chmod +x "${DEST}"
 
-        echo "kubectl $(kubectl version --client --short 2>/dev/null || kubectl version --client) installed"
+        kubectl version --client
 
-    - name: Install kuttl
-      if: inputs.install-kuttl == 'true'
+    - name: Install chainsaw
+      if: inputs.install-chainsaw == 'true'
       shell: bash
       run: |
-        # kuttl uses the raw uname -m naming: x86_64, arm64 (aarch64 → arm64).
-        ARCH=$(uname -m | sed 's/aarch64/arm64/')
-        VERSION="${{ inputs.kuttl-version }}"
-        BASE="https://github.com/kudobuilder/kuttl/releases/download/v${VERSION}"
-        BINARY="kubectl-kuttl_${VERSION}_linux_${ARCH}"
-        DEST="${{ inputs.tools-path }}/kubectl-kuttl"
+        ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+        VERSION="${{ inputs.chainsaw-version }}"
+        BASE="https://github.com/kyverno/chainsaw/releases/download/v${VERSION}"
+        TARBALL="chainsaw_linux_${ARCH}.tar.gz"
 
-        curl -fsSL -o "${DEST}"                           "${BASE}/${BINARY}"
-        curl -fsSL -o "/tmp/kuttl_checksums.txt"          "${BASE}/checksums.txt"
-        grep "^.\{64\}  ${BINARY}$" /tmp/kuttl_checksums.txt \
-          | awk -v dest="${DEST}" '{print $1 "  " dest}' \
+        curl -fsSL -o "/tmp/${TARBALL}" "${BASE}/${TARBALL}"
+        curl -fsSL -o "/tmp/chainsaw_checksums.txt" "${BASE}/checksums.txt"
+        grep " ${TARBALL}$" /tmp/chainsaw_checksums.txt \
+          | awk -v dest="/tmp/${TARBALL}" '{print $1 "  " dest}' \
           | sha256sum --check --status
-        rm /tmp/kuttl_checksums.txt
-        chmod +x "${DEST}"
+        tar -xzf "/tmp/${TARBALL}" -C "${{ inputs.tools-path }}" chainsaw
+        rm "/tmp/${TARBALL}" /tmp/chainsaw_checksums.txt
+        chmod +x "${{ inputs.tools-path }}/chainsaw"
 
-        echo "$(kubectl kuttl --version) installed"
+        chainsaw version
 
     - name: Install k3d
       if: inputs.install-k3d == 'true'
@@ -92,8 +91,8 @@ runs:
         BINARY="k3d-linux-${ARCH}"
         DEST="${{ inputs.tools-path }}/k3d"
 
-        curl -fsSL -o "${DEST}"                   "${BASE}/${BINARY}"
-        curl -fsSL -o "/tmp/k3d_sha256sum.txt"    "${BASE}/checksums.txt"
+        curl -fsSL -o "${DEST}" "${BASE}/${BINARY}"
+        curl -fsSL -o "/tmp/k3d_sha256sum.txt" "${BASE}/checksums.txt"
         grep "${BINARY}" /tmp/k3d_sha256sum.txt \
           | awk -v dest="${DEST}" '{print $1 "  " dest}' \
           | sha256sum --check --status
