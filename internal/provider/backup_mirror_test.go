@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	common "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
@@ -53,6 +54,10 @@ func TestMirrorScheduledBackupByLabels(t *testing.T) {
 	require.NotNil(t, mirror)
 	require.Equal(t, "nightly", mirror.Spec.ScheduleName)
 	require.Equal(t, "bs-msp-1", mirror.Spec.StorageRef.Name)
+	require.Equal(t, backupv1alpha1.BackupOriginTypeInstance, mirror.Spec.Origin.Type)
+	require.NotNil(t, mirror.Spec.Origin.InstanceRef)
+	require.Equal(t, "inst-qaf", mirror.Spec.Origin.InstanceRef.Name)
+	require.Nil(t, mirror.Spec.Origin.External)
 	require.Len(t, mirror.OwnerReferences, 1)
 	owner := mirror.OwnerReferences[0]
 	require.Equal(t, pxcv1.SchemeGroupVersion.String(), owner.APIVersion)
