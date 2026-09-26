@@ -211,7 +211,6 @@ if enable_seaweedfs:
         objects=[
             'seaweedfs:namespace',
             'seaweedfs-data:persistentvolumeclaim',
-            'seaweedfs-cert:secret',
         ],
         port_forwards=[port_forward(9090, 8888, 'SeaweedFS Filer UI')],
         labels=['backup-storage'],

@@ -16,7 +16,7 @@ spec:
   s3:
     bucket: everest-operator
     region: us-east-1
-    endpointURL: https://seaweedfs.seaweedfs.svc.cluster.local
+    endpointURL: http://seaweedfs.seaweedfs.svc.cluster.local
     forcePathStyle: true
     credentialsSecretRef:
       name: seaweedfs-credentials

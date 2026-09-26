@@ -23,7 +23,7 @@ spec:
   s3:
     bucket: backups
     region: us-east-1
-    endpointURL: https://seaweedfs.seaweedfs.svc.cluster.local
+    endpointURL: http://seaweedfs.seaweedfs.svc.cluster.local
     forcePathStyle: true
     verifyTLS: false
     credentialsSecretRef:
