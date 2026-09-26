@@ -24,6 +24,8 @@ spec:
             file: 00-assert.yaml
 
     - name: deploy-seaweedfs
+      timeouts:
+        exec: 4m
       try:
         - script:
             content: |
