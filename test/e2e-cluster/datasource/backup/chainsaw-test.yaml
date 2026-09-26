@@ -4,7 +4,7 @@ metadata:
   name: backup-restore
 spec:
   description: |
-    Restore a Backup onto the same Instance: use cluster Minio,
+    Restore a Backup onto the same Instance: use cluster SeaweedFS,
     create an Instance with backups enabled, write data and take a Backup,
     mutate the data, restore that Backup in place, and verify the original
     seeded row is back.
@@ -23,17 +23,17 @@ spec:
         - assert:
             file: 00-assert.yaml
 
-    - name: deploy-minio
+    - name: deploy-seaweedfs
       try:
         - script:
             content: |
-              kubectl apply -f ${OPERATOR_ROOT_PATH}/dev/resources/minio.yaml
-              kubectl wait --for=condition=available deployment/minio -n minio --timeout=120s
+              kubectl apply -f ${OPERATOR_ROOT_PATH}/dev/resources/seaweedfs.yaml
+              kubectl wait --for=condition=available deployment/seaweedfs -n seaweedfs --timeout=120s
       catch:
         - script:
-            content: kubectl get pods -n minio -o yaml
+            content: kubectl get pods -n seaweedfs -o yaml
         - script:
-            content: kubectl logs -n minio -l app=minio -c minio --tail=50
+            content: kubectl logs -n seaweedfs -l app=seaweedfs -c seaweedfs --tail=50
 
     - name: setup-backup
       try:

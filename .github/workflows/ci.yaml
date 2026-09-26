@@ -141,10 +141,10 @@ jobs:
       make_target: test-integration
       suite: integration
       timeout_minutes: 60
-      needs_minio: true
+      needs_seaweedfs: true
     secrets: inherit
 
-  # e2e-cluster is not run on CI: a real PXC 8.4 pod (plus HAProxy, MinIO,
+  # e2e-cluster is not run on CI: a real PXC 8.4 pod (plus HAProxy, SeaweedFS,
   # k3d, and operators) does not fit on a default GitHub-hosted runner
   # (2 vCPU / 7 GiB). Run locally with `make deploy-provider-e2e` then
   # `make test-e2e-cluster`.

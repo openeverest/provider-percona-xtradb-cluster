@@ -11,7 +11,7 @@ spec:
       name: pxc
     storages:
       - storageRef:
-          name: minio-storage
+          name: seaweedfs-storage
         schedules:
           - name: full
             enabled: true

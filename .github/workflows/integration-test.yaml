@@ -19,8 +19,8 @@ on:
         required: false
         default: 60
         type: number
-      needs_minio:
-        description: Whether to deploy MinIO before running the tests
+      needs_seaweedfs:
+        description: Whether to deploy SeaweedFS before running the tests
         required: false
         default: false
         type: boolean
@@ -87,11 +87,11 @@ jobs:
         env:
           OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
-      - name: Deploy MinIO for backup tests
-        if: ${{ inputs.needs_minio }}
+      - name: Deploy SeaweedFS for backup tests
+        if: ${{ inputs.needs_seaweedfs }}
         run: |
-          kubectl apply -f ./dev/resources/minio.yaml
-          kubectl wait --for=condition=available deployment/minio -n minio --timeout=180s
+          kubectl apply -f ./dev/resources/seaweedfs.yaml
+          kubectl wait --for=condition=available deployment/seaweedfs -n seaweedfs --timeout=180s
 
       - name: Deploy provider for CI
         run: make deploy-provider-ci PXC_OPERATOR_REPLICA_COUNT=0
