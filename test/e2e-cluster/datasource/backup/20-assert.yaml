@@ -1,7 +1,7 @@
 apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupStorage
 metadata:
-  name: minio-storage
+  name: seaweedfs-storage
 ---
 apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupClass

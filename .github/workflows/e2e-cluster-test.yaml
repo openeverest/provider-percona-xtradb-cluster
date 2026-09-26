@@ -80,10 +80,10 @@ jobs:
         env:
           OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
-      - name: Deploy MinIO for backup tests
+      - name: Deploy SeaweedFS for backup tests
         run: |
-          kubectl apply -f ./dev/resources/minio.yaml
-          kubectl wait --for=condition=available deployment/minio -n minio --timeout=180s
+          kubectl apply -f ./dev/resources/seaweedfs.yaml
+          kubectl wait --for=condition=available deployment/seaweedfs -n seaweedfs --timeout=180s
 
       - name: Deploy provider with PXC operator
         run: make deploy-provider-e2e
