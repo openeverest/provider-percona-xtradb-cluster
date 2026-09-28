@@ -87,14 +87,12 @@ func imageForComponentTypeVersion(spec *corev1alpha1.ProviderSpec, componentType
 }
 
 func defaultImageForComponentType(spec *corev1alpha1.ProviderSpec, componentType string) string {
+	if image := controller.GetDefaultImage(spec, componentType); image != "" {
+		return image
+	}
 	ct, ok := spec.ComponentTypes[componentType]
 	if !ok {
 		return ""
-	}
-	for _, v := range ct.Versions {
-		if v.Default && v.Image != "" {
-			return v.Image
-		}
 	}
 	for _, v := range ct.Versions {
 		if v.Image != "" {

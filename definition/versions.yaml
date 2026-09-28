@@ -1,9 +1,10 @@
 # Component type version catalog.
 # Add new versions here when upstream releases are available.
-# Mark exactly one version per type as `default: true`.
+# Name the default version per type via `defaultVersion`.
 
 componentTypes:
   pxc:
+    defaultVersion: "8.4.8-8.1"
     versions:
     - version: "5.7.34-31.51"
       image: percona/percona-xtradb-cluster:5.7.34-31.51
@@ -31,8 +32,8 @@ componentTypes:
       image: percona/percona-xtradb-cluster:8.4.7-7.1
     - version: "8.4.8-8.1"
       image: percona/percona-xtradb-cluster:8.4.8-8.1
-      default: true
   backup:
+    defaultVersion: "8.4.0-5.1"
     versions:
     - version: "2.4.29"
       image: percona/percona-xtrabackup:2.4.29
@@ -40,31 +41,30 @@ componentTypes:
       image: percona/percona-xtrabackup:8.0.35-35.1
     - version: "8.4.0-5.1"
       image: percona/percona-xtrabackup:8.4.0-5.1
-      default: true
   pmm:
+    defaultVersion: "3.8.0"
     versions:
     - version: "2.44.1-1"
       image: percona/pmm-client:2.44.1-1
     - version: "3.8.0"
       image: percona/pmm-client:3.8.0
-      default: true
   haproxy:
+    defaultVersion: "2.8.18-1"
     versions:
     - version: "2.8.18-1"
       image: percona/haproxy:2.8.18-1
-      default: true
   proxysql:
+    defaultVersion: "2.7.3-1.3"
     versions:
     - version: "2.7.3-1.3"
       image: percona/proxysql2:2.7.3-1.3
-      default: true
 
 # Version bundles — curated sets of component versions known to work together.
 # Users set spec.version on an Instance to select a bundle.
-# The bundle with default: true is used when spec.version is omitted.
+# The bundle named by defaultVersion is used when spec.version is omitted.
+defaultVersion: "8.4.8"
 versions:
 - name: "8.4.8"
-  default: true
   components:
     engine: "8.4.8-8.1"
     proxy: "2.8.18-1"
