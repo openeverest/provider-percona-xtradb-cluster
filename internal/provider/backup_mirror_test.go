@@ -167,3 +167,57 @@ func TestDecodeAndValidatePITRConfigAppliesDefaults(t *testing.T) {
 		TimeoutSeconds:     ptrTo(3600.0),
 	}, cfg)
 }
+
+func TestBuildPXCRetention(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		retention *corev1alpha1.BackupScheduleRetention
+		want      *pxcv1.PXCScheduledBackupRetention
+		wantErr   string
+	}{
+		{
+			name: "unset retention keeps all backups",
+		},
+		{
+			name: "count retention maps to the operator's count retention",
+			retention: &corev1alpha1.BackupScheduleRetention{
+				Type:  corev1alpha1.BackupScheduleRetentionTypeCount,
+				Count: ptrTo(int32(7)),
+			},
+			want: &pxcv1.PXCScheduledBackupRetention{
+				Type:              "count",
+				Count:             7,
+				DeleteFromStorage: true,
+			},
+		},
+		{
+			name: "time retention is rejected",
+			retention: &corev1alpha1.BackupScheduleRetention{
+				Type:     corev1alpha1.BackupScheduleRetentionTypeTime,
+				Duration: "30d",
+			},
+			wantErr: `schedule "daily": time retention is not supported by PXC`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := buildPXCRetention(corev1alpha1.InstanceBackupSchedule{
+				Name:      "daily",
+				Enabled:   true,
+				Cron:      "0 2 * * *",
+				Retention: tc.retention,
+			})
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
