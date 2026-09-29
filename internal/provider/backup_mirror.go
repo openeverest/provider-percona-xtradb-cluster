@@ -248,19 +248,16 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			if !schedule.Enabled {
 				continue
 			}
-			s := pxcv1.PXCScheduledBackupSchedule{
+			retention, err := buildPXCRetention(schedule)
+			if err != nil {
+				return &controller.BackupConfigError{Reason: "RetentionTypeUnsupported", Message: err.Error()}
+			}
+			backupSpec.Schedule = append(backupSpec.Schedule, pxcv1.PXCScheduledBackupSchedule{
 				Name:        schedule.Name,
 				Schedule:    schedule.Cron,
 				StorageName: storage.StorageRef.Name,
-			}
-			if schedule.RetentionCopies > 0 {
-				s.Retention = &pxcv1.PXCScheduledBackupRetention{
-					Type:              "count",
-					Count:             int(schedule.RetentionCopies),
-					DeleteFromStorage: true,
-				}
-			}
-			backupSpec.Schedule = append(backupSpec.Schedule, s)
+				Retention:   retention,
+			})
 		}
 	}
 
@@ -273,6 +270,22 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 
 	pxc.Spec.Backup = backupSpec
 	return nil
+}
+
+// buildPXCRetention returns nil (keep all) when the schedule sets no retention.
+// The PXC operator only supports count-based retention.
+func buildPXCRetention(schedule corev1alpha1.InstanceBackupSchedule) (*pxcv1.PXCScheduledBackupRetention, error) {
+	if schedule.Retention == nil {
+		return nil, nil
+	}
+	if schedule.Retention.Type != corev1alpha1.BackupScheduleRetentionTypeCount {
+		return nil, fmt.Errorf("schedule %q: %s retention is not supported by PXC, use count", schedule.Name, schedule.Retention.Type)
+	}
+	return &pxcv1.PXCScheduledBackupRetention{
+		Type:              "count",
+		Count:             int(*schedule.Retention.Count),
+		DeleteFromStorage: true,
+	}, nil
 }
 
 func decodeAndValidatePITRConfig(storageName string, raw []byte) (*pxcPITRConfig, error) {
