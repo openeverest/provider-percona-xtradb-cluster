@@ -26,6 +26,12 @@ const (
 )
 
 func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster, providerSpec *corev1alpha1.ProviderSpec) error {
+	// A ProviderManaged pmm binding (spec.monitoring.destinations[]) wins over
+	// the legacy monitoring component.
+	if bound, err := applyPMMBindings(c, pxc, providerSpec); err != nil || bound {
+		return err
+	}
+
 	monitoringComponent, ok := c.Instance().Spec.Components[common.ComponentMonitoring]
 	if !ok {
 		pxc.Spec.PMM = nil

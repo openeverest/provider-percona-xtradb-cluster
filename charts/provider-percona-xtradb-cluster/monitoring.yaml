@@ -1,0 +1,19 @@
+# Monitoring contract (spec 014). In the final design provider-sdk generates
+# this from definition/monitoring.yaml; the PoC keeps it as a chart file that
+# templates/provider.yaml splices under spec.
+monitoring:
+  integrations:
+    pmm:
+      agentVersions: ">=3.0.0 <4.0.0"
+  componentTypes:
+    pxc:
+      kind: mysql
+      metrics: Exporter
+      credentialProfiles: [metrics, queryAnalytics]
+      features: [queryAnalytics]
+    haproxy:
+      kind: haproxy
+      metrics: Native
+    proxysql:
+      kind: proxysql
+      metrics: None
