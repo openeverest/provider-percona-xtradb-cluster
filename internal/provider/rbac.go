@@ -17,6 +17,7 @@ package provider
 // =============================================================================
 // Allow managing connection and PMM Secrets in tenant namespaces.
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=pxc.percona.com,resources=perconaxtradbclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=pxc.percona.com,resources=perconaxtradbclusters/status,verbs=get
 // +kubebuilder:rbac:groups=pxc.percona.com,resources=perconaxtradbclusters/finalizers,verbs=update

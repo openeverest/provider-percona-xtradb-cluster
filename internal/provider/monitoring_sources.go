@@ -41,8 +41,8 @@ func (p *PXCProvider) MonitoringIntegrations() []string {
 }
 
 // MonitoringSources implements controller.MonitoringSourcesProvider. HAProxy
-// serves native OpenMetrics; the PXC engine needs an exporter (phase 2) and
-// publishes no endpoint yet.
+// serves native OpenMetrics; the PXC engine is probed through the
+// mysqld_exporter Deployment that reconcileMetricsExporter runs on demand.
 func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.MonitoringSources, error) {
 	pxc := &pxcv1.PerconaXtraDBCluster{}
 	if err := c.Get(pxc, c.Name()); err != nil {
@@ -50,6 +50,7 @@ func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.Mo
 		return &corev1alpha1.MonitoringSources{}, nil //nolint:nilerr
 	}
 	s := &corev1alpha1.MonitoringSources{}
+	engineMetricsSources(c, pxc, s)
 	if pxc.Spec.HAProxyEnabled() {
 		s.Metrics = append(s.Metrics, corev1alpha1.MetricsEndpoint{
 			Component: common.ComponentProxy,

@@ -16,6 +16,11 @@ spec:
       versions:
         - image: percona/haproxy:2.8.18-1
           version: 2.8.18-1
+    mysqld-exporter:
+      defaultVersion: 0.20.0
+      versions:
+        - image: quay.io/prometheus/mysqld-exporter:v0.20.0
+          version: 0.20.0
     pmm:
       defaultVersion: 3.8.0
       versions:

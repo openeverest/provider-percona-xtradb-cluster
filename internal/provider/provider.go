@@ -29,6 +29,7 @@ import (
 	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -359,6 +360,10 @@ func SyncPXC(c *controller.Context) error {
 		return err
 	}
 
+	if err := applyMetricsExporter(c, pxc, spec); err != nil {
+		return err
+	}
+
 	if err := applyBackupSettings(c, pxc); err != nil {
 		return err
 	}
@@ -611,10 +616,13 @@ func NewPXCProviderInterface() *PXCProvider {
 		SchemeFuncs: []func(*runtime.Scheme) error{
 			pxcv1.SchemeBuilder.AddToScheme,
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
+			batchv1.AddToScheme,
 		},
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes
 			controller.WatchOwned(&pxcv1.PerconaXtraDBCluster{}),
+			// The metrics user Job's completion gates the engine metrics endpoint.
+			controller.WatchOwned(&batchv1.Job{}),
 			controller.WatchExternal(
 				&monitoringv1alpha1.MonitoringConfig{},
 				handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {

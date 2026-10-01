@@ -48,6 +48,11 @@ componentTypes:
       image: percona/pmm-client:2.44.1-1
     - version: "3.8.0"
       image: percona/pmm-client:3.8.0
+  mysqld-exporter:
+    defaultVersion: "0.20.0"
+    versions:
+    - version: "0.20.0"
+      image: quay.io/prometheus/mysqld-exporter:v0.20.0
   haproxy:
     defaultVersion: "2.8.18-1"
     versions:
