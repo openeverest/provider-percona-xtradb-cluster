@@ -19,6 +19,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - create
@@ -67,6 +73,18 @@ rules:
   - patch
   - update
 - apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - coordination.k8s.io
   resources:
   - leases
@@ -113,11 +131,22 @@ rules:
 - apiGroups:
   - monitoring.openeverest.io
   resources:
+  - monitoringbindings
+  - monitoringclasses
   - monitoringconfigs
+  - monitoringdestinations
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - monitoring.openeverest.io
+  resources:
+  - monitoringbindings/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - pxc.percona.com
   resources:
