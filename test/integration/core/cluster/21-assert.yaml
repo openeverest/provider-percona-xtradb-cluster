@@ -36,6 +36,9 @@ spec:
             - weight: 100
               podAffinityTerm:
                 topologyKey: kubernetes.io/hostname
+    topologySpreadConstraints:
+      - topologyKey: kubernetes.io/hostname
+      - topologyKey: topology.kubernetes.io/zone
 status:
   state: ready
   pxc:

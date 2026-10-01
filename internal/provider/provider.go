@@ -29,6 +29,7 @@ import (
 	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
+	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -256,11 +257,7 @@ func SyncPXC(c *controller.Context) error {
 			pvc.StorageClassName = engine.Storage.StorageClass
 		}
 	}
-	if engine.SchedulingPolicy != nil && engine.SchedulingPolicy.Affinity != nil {
-		pxc.Spec.PXC.Affinity = &pxcv1.PodAffinity{
-			Advanced: engine.SchedulingPolicy.Affinity,
-		}
-	}
+	applyScheduling(pxc.Spec.PXC.PodSpec, engine.SchedulingPolicy, naming.LabelsPXC(pxc))
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
 	if !ok || proxy.Type == "" || proxy.Replicas == nil {
@@ -281,6 +278,7 @@ func SyncPXC(c *controller.Context) error {
 				},
 			},
 		}
+		applyScheduling(&pxc.Spec.ProxySQL.PodSpec, proxy.SchedulingPolicy, naming.LabelsProxySQL(pxc))
 	} else {
 		if pxc.Spec.HAProxy == nil {
 			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
@@ -288,6 +286,7 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.HAProxy.Enabled = true
 		pxc.Spec.HAProxy.Size = proxyReplicas
 		pxc.Spec.ProxySQL = nil
+		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc))
 	}
 
 	applyServiceExpose(pxc, engine, proxy)
