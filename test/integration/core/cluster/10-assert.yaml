@@ -44,33 +44,11 @@ spec:
           requests:
             storage: 25Gi
     affinity:
-      antiAffinityTopologyKey: none
-    topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/instance: test-pxc-cluster
-            app.kubernetes.io/component: pxc
-      - maxSkew: 1
-        topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/instance: test-pxc-cluster
-            app.kubernetes.io/component: pxc
+      antiAffinityTopologyKey: kubernetes.io/hostname
+    (topologySpreadConstraints == null): true
   haproxy:
     enabled: true
     size: 1
     affinity:
       antiAffinityTopologyKey: none
-    topologySpreadConstraints:
-      - topologyKey: kubernetes.io/hostname
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/component: haproxy
-      - topologyKey: topology.kubernetes.io/zone
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/component: haproxy
+    (topologySpreadConstraints == null): true
