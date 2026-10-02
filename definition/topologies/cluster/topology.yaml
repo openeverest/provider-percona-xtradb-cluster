@@ -7,12 +7,38 @@ config:
     engine:
       defaults:
         replicas: 3
+      # Declared fields are the ones SyncPXC actually reads.
+      supportedFields:
+        properties:
+          replicas: {minimum: 1}
+          resources: {}
+          storage: {}
+          service: {}
+          schedulingPolicy:
+            # The provider reads only these two off the policy.
+            properties:
+              affinity: {}
+              topologySpreadConstraints: {}
     proxy:
       defaults:
         type: haproxy
         replicas: 2
+      # Resources and storage are not applied to HAProxy/ProxySQL pods.
+      supportedFields:
+        properties:
+          type: {}
+          replicas: {minimum: 1}
+          service: {}
+          schedulingPolicy:
+            # The provider reads only these two off the policy.
+            properties:
+              affinity: {}
+              topologySpreadConstraints: {}
     monitoring:
       optional: true
+      supportedFields:
+        properties:
+          resources: {}
 
 ui:
   sections:
@@ -214,9 +240,21 @@ ui:
             multiline: true
             minRows: 3
             maxRows: 8
+        podSchedulingPolicy:
+          uiType: group
+          groupType: toggleable
+          label: "Pod scheduling policy"
+          description: "Control how database pods are scheduled onto nodes using affinity rules."
+          components:
+            policy:
+              uiType: widget
+              widgetType: podSchedulingPolicy
+          componentsOrder:
+            - policy
       componentsOrder:
         - storageClass
         - configuration
+        - podSchedulingPolicy
   sectionsOrder:
     - databaseVersion
     - resources
