@@ -257,7 +257,7 @@ func SyncPXC(c *controller.Context) error {
 			pvc.StorageClassName = engine.Storage.StorageClass
 		}
 	}
-	applyScheduling(pxc.Spec.PXC.PodSpec, engine.SchedulingPolicy, naming.LabelsPXC(pxc))
+	applyScheduling(pxc.Spec.PXC.PodSpec, engine.SchedulingPolicy, naming.LabelsPXC(pxc), corev1.LabelHostname)
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
 	if !ok || proxy.Type == "" || proxy.Replicas == nil {
@@ -266,6 +266,8 @@ func SyncPXC(c *controller.Context) error {
 
 	proxyType := proxy.Type
 	proxyReplicas := *proxy.Replicas
+	// Proxies hold no data, so their replicas may share a node.
+	proxyAntiAffinityKey := pxcv1.AffinityTopologyKeyOff
 
 	if proxyType == common.ProxyTypeProxySQL {
 		pxc.Spec.HAProxy = nil
@@ -278,7 +280,7 @@ func SyncPXC(c *controller.Context) error {
 				},
 			},
 		}
-		applyScheduling(&pxc.Spec.ProxySQL.PodSpec, proxy.SchedulingPolicy, naming.LabelsProxySQL(pxc))
+		applyScheduling(&pxc.Spec.ProxySQL.PodSpec, proxy.SchedulingPolicy, naming.LabelsProxySQL(pxc), proxyAntiAffinityKey)
 	} else {
 		if pxc.Spec.HAProxy == nil {
 			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
@@ -286,7 +288,7 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.HAProxy.Enabled = true
 		pxc.Spec.HAProxy.Size = proxyReplicas
 		pxc.Spec.ProxySQL = nil
-		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc))
+		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc), proxyAntiAffinityKey)
 	}
 
 	applyServiceExpose(pxc, engine, proxy)

@@ -44,7 +44,7 @@ spec:
           requests:
             storage: 25Gi
     affinity:
-      antiAffinityTopologyKey: none
+      antiAffinityTopologyKey: kubernetes.io/hostname
     (topologySpreadConstraints == null): true
   haproxy:
     enabled: true
