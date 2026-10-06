@@ -17,6 +17,7 @@ package provider
 import (
 	apicommon "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 )
 
@@ -29,4 +30,17 @@ func applyScheduling(spec *pxcv1.PodSpec, policy *apicommon.SchedulingPolicy, po
 		spec.Affinity = &pxcv1.PodAffinity{Advanced: policy.Affinity}
 	}
 	spec.TopologySpreadConstraints = controller.TopologySpreadConstraints(policy, podLabels)
+}
+
+// labelPods labels every component's pods so the runtime reports on them in
+// the Instance status. The operator adds them to the pod templates only, never
+// to the StatefulSet selectors.
+func labelPods(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster) {
+	pxc.Spec.PXC.Labels = c.PodLabels(common.ComponentEngine)
+	if pxc.Spec.HAProxy != nil {
+		pxc.Spec.HAProxy.Labels = c.PodLabels(common.ComponentProxy)
+	}
+	if pxc.Spec.ProxySQL != nil {
+		pxc.Spec.ProxySQL.Labels = c.PodLabels(common.ComponentProxy)
+	}
 }
