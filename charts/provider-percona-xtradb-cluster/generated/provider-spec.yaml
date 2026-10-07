@@ -213,7 +213,7 @@ spec:
             coroot:
               fieldParams:
                 helperText: Annotates MySQL pods so the Coroot cluster agent collects database metrics.
-                label: Coroot (experimental)
+                label: Coroot
               path: spec.components.monitoring.parameters.coroot.enabled
               uiType: toggle
             monitoring:
@@ -227,7 +227,7 @@ spec:
             prometheus:
               fieldParams:
                 helperText: Runs mysqld_exporter next to every MySQL node and creates a PodMonitor. Requires the Prometheus Operator.
-                label: Prometheus (experimental)
+                label: Prometheus
               path: spec.components.monitoring.parameters.prometheus.enabled
               uiType: toggle
           componentsOrder:
