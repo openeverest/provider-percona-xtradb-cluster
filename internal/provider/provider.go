@@ -290,6 +290,7 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.ProxySQL = nil
 		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc), proxyAntiAffinityKey)
 	}
+	labelPods(c, pxc)
 
 	applyServiceExpose(pxc, engine, proxy)
 

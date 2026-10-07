@@ -46,9 +46,17 @@ spec:
     affinity:
       antiAffinityTopologyKey: kubernetes.io/hostname
     (topologySpreadConstraints == null): true
+    labels:
+      core.openeverest.io/component: engine
+      core.openeverest.io/instance: test-pxc-cluster
+      core.openeverest.io/provider: percona-xtradb-cluster
   haproxy:
     enabled: true
     size: 1
     affinity:
       antiAffinityTopologyKey: none
     (topologySpreadConstraints == null): true
+    labels:
+      core.openeverest.io/component: proxy
+      core.openeverest.io/instance: test-pxc-cluster
+      core.openeverest.io/provider: percona-xtradb-cluster
