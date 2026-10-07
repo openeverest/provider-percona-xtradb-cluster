@@ -16,6 +16,11 @@ spec:
       versions:
         - image: percona/haproxy:2.8.18-1
           version: 2.8.18-1
+    mysqld-exporter:
+      defaultVersion: 0.20.0
+      versions:
+        - image: prom/mysqld-exporter:v0.20.0
+          version: 0.20.0
     pmm:
       defaultVersion: 3.8.0
       versions:
@@ -72,8 +77,22 @@ spec:
       parametersSchema:
         openAPIV3Schema:
           properties:
+            coroot:
+              properties:
+                enabled:
+                  type: boolean
+              type: object
             monitoringConfigName:
               type: string
+            prometheus:
+              properties:
+                enabled:
+                  type: boolean
+                podMonitorLabels:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
           type: object
       type: pmm
     proxy:
@@ -191,6 +210,12 @@ spec:
           label: Database Version
         monitoring:
           components:
+            coroot:
+              fieldParams:
+                helperText: Annotates MySQL pods so the Coroot cluster agent collects database metrics.
+                label: Coroot (experimental)
+              path: spec.components.monitoring.parameters.coroot.enabled
+              uiType: toggle
             monitoring:
               dataSource:
                 provider: monitoringConfigs
@@ -199,7 +224,17 @@ spec:
                 label: Monitoring endpoint
               path: spec.components.monitoring.parameters.monitoringConfigName
               uiType: select
-          description: Attach a MonitoringConfig to collect metrics.
+            prometheus:
+              fieldParams:
+                helperText: Runs mysqld_exporter next to every MySQL node and creates a PodMonitor. Requires the Prometheus Operator.
+                label: Prometheus (experimental)
+              path: spec.components.monitoring.parameters.prometheus.enabled
+              uiType: toggle
+          componentsOrder:
+            - monitoring
+            - prometheus
+            - coroot
+          description: Attach a PMM MonitoringConfig and/or enable experimental Prometheus and Coroot integrations.
           label: Monitoring
         proxy:
           components:

@@ -30,6 +30,7 @@ import (
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -369,6 +370,15 @@ func SyncPXC(c *controller.Context) error {
 
 	pxc.Spec.SecretsName = usersSecretName
 
+	monitoringParams, err := monitoringParametersFromInstance(c)
+	if err != nil {
+		return err
+	}
+	if err := applyPrometheusExporter(pxc, monitoringParams, spec); err != nil {
+		return err
+	}
+	applyCorootAnnotations(pxc, monitoringParams)
+
 	// When seeding from a DataSource, the target cluster's users secret must
 	// contain the same credentials as the source cluster: the restored datadir
 	// carries the source cluster's mysql user table, so a freshly generated
@@ -382,6 +392,10 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	if err := c.Apply(pxc); err != nil {
+		return err
+	}
+
+	if err := syncPodMonitor(c, pxc, monitoringParams); err != nil {
 		return err
 	}
 
@@ -613,6 +627,7 @@ func NewPXCProviderInterface() *PXCProvider {
 		SchemeFuncs: []func(*runtime.Scheme) error{
 			pxcv1.SchemeBuilder.AddToScheme,
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
+			monitoringv1.AddToScheme,
 		},
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes

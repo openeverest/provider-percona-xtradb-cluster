@@ -64,7 +64,7 @@ provider itself is covered under [Installation](#installation).
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.<name>.resources` |
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
-| Monitoring | ✅ | PMM, via the optional `monitoring` component |
+| Monitoring | ✅ | PMM, via the optional `monitoring` component; Prometheus and Coroot are experimental |
 | TLS | ⚠️ | the operator provisions certificates, but the connection string reported on the Instance requests `tls=false` |
 
 Stateful workloads additionally report:
@@ -203,6 +203,8 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `configuration` | `engine` | Raw `my.cnf` configuration passed to the operator |
 | `monitoringConfigName` | `monitoring` | PMM configuration to attach the instance to |
+| `prometheus.enabled` | `monitoring` | Experimental: `mysqld_exporter` sidecar on MySQL pods plus a `PodMonitor` (requires the Prometheus Operator); `prometheus.podMonitorLabels` match your `podMonitorSelector` |
+| `coroot.enabled` | `monitoring` | Experimental: [Coroot pod annotations](https://docs.coroot.com/databases/mysql#kubernetes-pod-annotations) on MySQL pods; credentials come from the users Secret |
 
 ## Development
 

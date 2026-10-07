@@ -88,19 +88,36 @@ func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBClus
 }
 
 func monitoringConfigNameFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
-	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
-		return "", nil
-	}
-
-	cfg := &components.PMMParameters{}
-	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
-		return "", fmt.Errorf("decode monitoring component parameters: %w", err)
+	cfg, err := monitoringParametersFromComponent(component)
+	if err != nil {
+		return "", err
 	}
 	if cfg.MonitoringConfigName == nil {
 		return "", nil
 	}
 
 	return *cfg.MonitoringConfigName, nil
+}
+
+func monitoringParametersFromComponent(component corev1alpha1.ComponentSpec) (*components.MonitoringParameters, error) {
+	cfg := &components.MonitoringParameters{}
+	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
+		return nil, fmt.Errorf("decode monitoring component parameters: %w", err)
+	}
+	return cfg, nil
+}
+
+// monitoringParametersFromInstance returns empty parameters when the
+// optional monitoring component is absent.
+func monitoringParametersFromInstance(c *controller.Context) (*components.MonitoringParameters, error) {
+	monitoringComponent, ok := c.Instance().Spec.Components[common.ComponentMonitoring]
+	if !ok {
+		return &components.MonitoringParameters{}, nil
+	}
+	return monitoringParametersFromComponent(monitoringComponent)
 }
 
 func pmmServerHostFromURL(rawURL string) (string, error) {

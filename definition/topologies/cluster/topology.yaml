@@ -101,7 +101,7 @@ ui:
         - nodesResources
     monitoring:
       label: "Monitoring"
-      description: "Attach a MonitoringConfig to collect metrics."
+      description: "Attach a PMM MonitoringConfig and/or enable experimental Prometheus and Coroot integrations."
       components:
         monitoring:
           uiType: select
@@ -111,6 +111,22 @@ ui:
             displayEmpty: true
           dataSource:
             provider: monitoringConfigs
+        prometheus:
+          uiType: toggle
+          path: spec.components.monitoring.parameters.prometheus.enabled
+          fieldParams:
+            label: "Prometheus"
+            helperText: "Runs mysqld_exporter next to every MySQL node and creates a PodMonitor. Requires the Prometheus Operator."
+        coroot:
+          uiType: toggle
+          path: spec.components.monitoring.parameters.coroot.enabled
+          fieldParams:
+            label: "Coroot"
+            helperText: "Annotates MySQL pods so the Coroot cluster agent collects database metrics."
+      componentsOrder:
+        - monitoring
+        - prometheus
+        - coroot
     proxy:
       label: "Proxy"
       description: "Configure a single proxy type for the cluster."

@@ -37,4 +37,6 @@ package provider
 // +kubebuilder:rbac:groups=backup.openeverest.io,resources=restores/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=backup.openeverest.io,resources=restores/finalizers,verbs=update
 // +kubebuilder:rbac:groups=monitoring.openeverest.io,resources=monitoringconfigs,verbs=get;list;watch
+// Allow managing the PodMonitor of the experimental Prometheus integration.
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 

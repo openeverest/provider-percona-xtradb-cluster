@@ -31,3 +31,7 @@ const (
 	ProxyTypeProxySQL = "proxysql"
 	MonitoringTypePMM = "pmm"
 )
+
+// ComponentTypeMySQLDExporter is the catalog entry for the Prometheus
+// integration's sidecar; it has no component of its own.
+const ComponentTypeMySQLDExporter = "mysqld-exporter"
