@@ -80,7 +80,7 @@ spec:
       type: haproxy
   defaultVersion: 8.4.8
   release:
-    version: 0.2.0
+    version: 0.3.0
   topologies:
     cluster:
       components:
