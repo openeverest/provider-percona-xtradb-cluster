@@ -103,10 +103,37 @@ spec:
   topologies:
     cluster:
       components:
-        engine: {}
+        engine:
+          supportedFields:
+            openAPIV3Schema:
+              properties:
+                replicas:
+                  minimum: 1
+                resources: {}
+                schedulingPolicy:
+                  properties:
+                    affinity: {}
+                    topologySpreadConstraints: {}
+                service: {}
+                storage: {}
         monitoring:
           optional: true
-        proxy: {}
+          supportedFields:
+            openAPIV3Schema:
+              properties:
+                resources: {}
+        proxy:
+          supportedFields:
+            openAPIV3Schema:
+              properties:
+                replicas:
+                  minimum: 1
+                schedulingPolicy:
+                  properties:
+                    affinity: {}
+                    topologySpreadConstraints: {}
+                service: {}
+                type: {}
       parametersSchema:
         openAPIV3Schema:
           type: object
@@ -169,6 +196,17 @@ spec:
                   wsrep-provider-options = evs.delayed_keep_period=PT545S;evs.inactive_timeout=PT90S;gmcast.peer_timeout=PT11S;gmcast.time_wait=PT13S;pc.linger=PT45S;evs.delay_margin=PT22S;evs.suspect_timeout=PT45S;gcs.fc_limit=96;gcs.max_packet_size=98304;evs.send_window=768;evs.user_send_window=768;evs.join_retrans_period=PT3S;evs.inactive_check_period=PT3S;evs.stats_report_period=PT1M;evs.max_install_timeouts=3;pc.announce_timeout=PT45S;pc.recovery=true;gcache.size=477560113;gcache.recover=yes;
               path: spec.components.engine.parameters.configuration
               uiType: text
+            podSchedulingPolicy:
+              components:
+                policy:
+                  uiType: widget
+                  widgetType: podSchedulingPolicy
+              componentsOrder:
+                - policy
+              description: Control how database pods are scheduled onto nodes using affinity rules.
+              groupType: toggleable
+              label: Pod scheduling policy
+              uiType: group
             storageClass:
               dataSource:
                 provider: storageClasses
@@ -186,6 +224,7 @@ spec:
           componentsOrder:
             - storageClass
             - configuration
+            - podSchedulingPolicy
           description: Configure advanced PXC settings.
           label: Advanced configuration
         databaseVersion:
