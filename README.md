@@ -206,6 +206,11 @@ The technology-specific knobs worth knowing about:
 | `prometheus.enabled` | `monitoring` | Experimental: `mysqld_exporter` sidecar on MySQL pods plus a `PodMonitor` (requires the Prometheus Operator); `prometheus.podMonitorLabels` match your `podMonitorSelector` |
 | `coroot.enabled` | `monitoring` | Experimental: [Coroot pod annotations](https://docs.coroot.com/databases/mysql#kubernetes-pod-annotations) on MySQL pods; credentials come from the users Secret |
 
+With PMM monitoring enabled, the instance's metrics in PMM carry `namespace` and
+`core_openeverest_io_instance` labels, plus `core_openeverest_io_component=proxy` on ProxySQL,
+so they can be queried per instance. HAProxy metrics are not labelled: the operator does not
+let the provider set their `pmm-admin` flags.
+
 ## Development
 
 Requires Go (see [go.mod](go.mod)), Docker, Helm, kubectl, and a Kubernetes cluster you can
