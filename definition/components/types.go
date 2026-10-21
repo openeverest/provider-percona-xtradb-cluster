@@ -32,10 +32,32 @@ type PXCParameters struct {
 	Configuration string `json:"configuration,omitempty"`
 }
 
-// PMMParameters defines structured parameters for PMM monitoring.
-type PMMParameters struct {
+// MonitoringParameters defines structured parameters for the monitoring component.
+// PMM, Prometheus and Coroot are independent and may be enabled together.
+type MonitoringParameters struct {
 	// MonitoringConfigName specifies the name of the MonitoringConfig resource
 	// to use for configuring PMM monitoring.
-	// If not specified, monitoring will not be configured.
+	// If not specified, PMM monitoring will not be configured.
 	MonitoringConfigName *string `json:"monitoringConfigName,omitempty"`
+	// Prometheus configures the experimental mysqld_exporter integration.
+	Prometheus *PrometheusParameters `json:"prometheus,omitempty"`
+	// Coroot configures the experimental Coroot integration.
+	Coroot *CorootParameters `json:"coroot,omitempty"`
+}
+
+// PrometheusParameters configures a mysqld_exporter sidecar on every MySQL
+// pod and a PodMonitor for the Prometheus Operator to scrape it.
+type PrometheusParameters struct {
+	// Enabled turns the Prometheus integration on.
+	Enabled bool `json:"enabled,omitempty"`
+	// PodMonitorLabels are added to the PodMonitor so that the Prometheus
+	// podMonitorSelector picks it up (e.g. release: kube-prometheus-stack).
+	PodMonitorLabels map[string]string `json:"podMonitorLabels,omitempty"`
+}
+
+// CorootParameters configures Coroot pod annotations on every MySQL pod so
+// the Coroot cluster agent discovers and scrapes the database.
+type CorootParameters struct {
+	// Enabled turns the Coroot integration on.
+	Enabled bool `json:"enabled,omitempty"`
 }

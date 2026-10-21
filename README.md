@@ -48,6 +48,7 @@ manages pods directly — all lifecycle work is delegated to the operator.
 
 | provider-percona-xtradb-cluster | OpenEverest | Percona Operator for MySQL | Kubernetes |
 |---|---|---|---|
+| `0.3.x` | `2.0.0-dev.4` | `1.20.x` | `1.30` – `1.34` |
 | `0.2.x` | `2.0.0-dev.3` | `1.20.x` | `1.30` – `1.34` |
 | `0.1.x` | `2.0.0-dev.2` | `1.20.x` | `1.30` – `1.34` |
 
@@ -63,7 +64,7 @@ provider itself is covered under [Installation](#installation).
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.<name>.resources` |
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
-| Monitoring | ✅ | PMM, via the optional `monitoring` component |
+| Monitoring | ✅ | PMM, via the optional `monitoring` component; Prometheus and Coroot are experimental |
 | TLS | ⚠️ | the operator provisions certificates, but the connection string reported on the Instance requests `tls=false` |
 
 Stateful workloads additionally report:
@@ -84,7 +85,7 @@ The provider chart is published as an OCI artifact to GitHub Container Registry:
 ```bash
 helm install provider-percona-xtradb-cluster \
   oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --namespace everest-system
 ```
 
@@ -98,7 +99,7 @@ Upgrade and uninstall:
 
 ```bash
 helm upgrade provider-percona-xtradb-cluster \
-  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.2.0
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.3.0
 helm uninstall provider-percona-xtradb-cluster --namespace everest-system
 ```
 
@@ -202,6 +203,13 @@ The technology-specific knobs worth knowing about:
 |---|---|---|
 | `configuration` | `engine` | Raw `my.cnf` configuration passed to the operator |
 | `monitoringConfigName` | `monitoring` | PMM configuration to attach the instance to |
+| `prometheus.enabled` | `monitoring` | Experimental: `mysqld_exporter` sidecar on MySQL pods plus a `PodMonitor` (requires the Prometheus Operator); `prometheus.podMonitorLabels` match your `podMonitorSelector` |
+| `coroot.enabled` | `monitoring` | Experimental: [Coroot pod annotations](https://docs.coroot.com/databases/mysql#kubernetes-pod-annotations) on MySQL pods; credentials come from the users Secret |
+
+With PMM monitoring enabled, the instance's metrics in PMM carry `namespace` and
+`core_openeverest_io_instance` labels, plus `core_openeverest_io_component=proxy` on ProxySQL,
+so they can be queried per instance. HAProxy metrics are not labelled: the operator does not
+let the provider set their `pmm-admin` flags.
 
 ## Development
 

@@ -58,6 +58,11 @@ componentTypes:
     versions:
     - version: "2.7.3-1.3"
       image: percona/proxysql2:2.7.3-1.3
+  mysqld-exporter:
+    defaultVersion: "0.20.0"
+    versions:
+    - version: "0.20.0"
+      image: prom/mysqld-exporter:v0.20.0
 
 # Version bundles — curated sets of component versions known to work together.
 # Users set spec.version on an Instance to select a bundle.

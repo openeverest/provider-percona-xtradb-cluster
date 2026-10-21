@@ -14,6 +14,16 @@ spec:
       replicas: 1
 status:
   phase: Ready
+  # The PXC operator is scaled to 0, so the components have no pods.
+  components:
+    - name: engine
+      selector: core.openeverest.io/component=engine,core.openeverest.io/instance=test-pxc-cluster
+      replicas: 0
+      readyReplicas: 0
+    - name: proxy
+      selector: core.openeverest.io/component=proxy,core.openeverest.io/instance=test-pxc-cluster
+      replicas: 0
+      readyReplicas: 0
 ---
 apiVersion: pxc.percona.com/v1
 kind: PerconaXtraDBCluster

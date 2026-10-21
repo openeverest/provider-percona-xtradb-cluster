@@ -30,6 +30,7 @@ import (
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,6 +40,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
+
+const (
+	defaultEngineReplicas int32 = 3
+	defaultProxyReplicas  int32 = 2
 )
 
 // defaultSpec returns the default PerconaXtraDBClusterSpec for new instances.
@@ -147,10 +153,14 @@ func ValidatePXC(c *controller.Context) error {
 	l.Info("Validating PXC cluster", "cluster", c.Name())
 
 	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok || engine.Replicas == nil {
-		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
+	if !ok {
+		return fmt.Errorf("instance spec missing %q component", common.ComponentEngine)
 	}
-	if *engine.Replicas < 1 {
+	engineReplicas := defaultEngineReplicas
+	if engine.Replicas != nil {
+		engineReplicas = *engine.Replicas
+	}
+	if engineReplicas < 1 {
 		return fmt.Errorf("%q replicas must be >= 1", common.ComponentEngine)
 	}
 
@@ -161,10 +171,11 @@ func ValidatePXC(c *controller.Context) error {
 	if proxy.Type == "" {
 		return fmt.Errorf("instance spec missing %q component type", common.ComponentProxy)
 	}
-	if proxy.Replicas == nil {
-		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentProxy)
+	proxyReplicas := defaultProxyReplicas
+	if proxy.Replicas != nil {
+		proxyReplicas = *proxy.Replicas
 	}
-	if *proxy.Replicas < 1 {
+	if proxyReplicas < 1 {
 		return fmt.Errorf("%q replicas must be >= 1", common.ComponentProxy)
 	}
 	switch proxy.Type {
@@ -232,10 +243,14 @@ func SyncPXC(c *controller.Context) error {
 
 	// Get the engine component spec
 	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok || engine.Replicas == nil {
-		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
+	if !ok {
+		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentEngine)
 	}
-	pxc.Spec.PXC.Size = *engine.Replicas
+	engineReplicas := defaultEngineReplicas
+	if engine.Replicas != nil {
+		engineReplicas = *engine.Replicas
+	}
+	pxc.Spec.PXC.Size = engineReplicas
 	if engine.Resources != nil {
 		pxc.Spec.PXC.Resources = *engine.Resources
 	}
@@ -257,15 +272,20 @@ func SyncPXC(c *controller.Context) error {
 			pvc.StorageClassName = engine.Storage.StorageClass
 		}
 	}
-	applyScheduling(pxc.Spec.PXC.PodSpec, engine.SchedulingPolicy, naming.LabelsPXC(pxc))
+	applyScheduling(pxc.Spec.PXC.PodSpec, engine.SchedulingPolicy, naming.LabelsPXC(pxc), corev1.LabelHostname)
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
-	if !ok || proxy.Type == "" || proxy.Replicas == nil {
+	if !ok || proxy.Type == "" {
 		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentProxy)
 	}
 
 	proxyType := proxy.Type
-	proxyReplicas := *proxy.Replicas
+	proxyReplicas := defaultProxyReplicas
+	if proxy.Replicas != nil {
+		proxyReplicas = *proxy.Replicas
+	}
+	// Proxies hold no data, so their replicas may share a node.
+	proxyAntiAffinityKey := pxcv1.AffinityTopologyKeyOff
 
 	if proxyType == common.ProxyTypeProxySQL {
 		pxc.Spec.HAProxy = nil
@@ -278,7 +298,7 @@ func SyncPXC(c *controller.Context) error {
 				},
 			},
 		}
-		applyScheduling(&pxc.Spec.ProxySQL.PodSpec, proxy.SchedulingPolicy, naming.LabelsProxySQL(pxc))
+		applyScheduling(&pxc.Spec.ProxySQL.PodSpec, proxy.SchedulingPolicy, naming.LabelsProxySQL(pxc), proxyAntiAffinityKey)
 	} else {
 		if pxc.Spec.HAProxy == nil {
 			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
@@ -286,8 +306,9 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.HAProxy.Enabled = true
 		pxc.Spec.HAProxy.Size = proxyReplicas
 		pxc.Spec.ProxySQL = nil
-		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc))
+		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc), proxyAntiAffinityKey)
 	}
+	labelPods(c, pxc)
 
 	applyServiceExpose(pxc, engine, proxy)
 
@@ -298,7 +319,7 @@ func SyncPXC(c *controller.Context) error {
 	if pxc.Spec.HAProxyEnabled() {
 		proxyReplicasPtr = &pxc.Spec.HAProxy.Size
 	}
-	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas, proxyReplicasPtr)
+	pxc.Spec.Unsafe = unsafeFlags(&engineReplicas, proxyReplicasPtr)
 
 	spec, err := c.ProviderSpec()
 	if err != nil {
@@ -312,7 +333,7 @@ func SyncPXC(c *controller.Context) error {
 	if engineConfig != "" {
 		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
-		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(*engine.Replicas, engine.Resources)
+		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(engineReplicas, engine.Resources)
 	}
 
 	// Set the image: use the user-specified image if provided, otherwise resolve
@@ -366,6 +387,15 @@ func SyncPXC(c *controller.Context) error {
 
 	pxc.Spec.SecretsName = usersSecretName
 
+	monitoringParams, err := monitoringParametersFromInstance(c)
+	if err != nil {
+		return err
+	}
+	if err := applyPrometheusExporter(pxc, monitoringParams, spec); err != nil {
+		return err
+	}
+	applyCorootAnnotations(pxc, monitoringParams)
+
 	// When seeding from a DataSource, the target cluster's users secret must
 	// contain the same credentials as the source cluster: the restored datadir
 	// carries the source cluster's mysql user table, so a freshly generated
@@ -379,6 +409,10 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	if err := c.Apply(pxc); err != nil {
+		return err
+	}
+
+	if err := syncPodMonitor(c, pxc, monitoringParams); err != nil {
 		return err
 	}
 
@@ -610,6 +644,8 @@ func NewPXCProviderInterface() *PXCProvider {
 		SchemeFuncs: []func(*runtime.Scheme) error{
 			pxcv1.SchemeBuilder.AddToScheme,
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
+			monitoringv1.AddToScheme,
+			backupv1alpha1.SchemeBuilder.AddToScheme,
 		},
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes

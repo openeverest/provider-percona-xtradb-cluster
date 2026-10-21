@@ -33,6 +33,9 @@ spec:
     image: percona/pmm-client:3.8.0
     customClusterName: test-pxc-cluster
     imagePullPolicy: IfNotPresent
+    # Labels that tie the instance's metrics in PMM back to the Instance.
+    pxcParams: (join('', ['--custom-labels=namespace=', $namespace, ',core_openeverest_io_instance=test-pxc-cluster']))
+    proxysqlParams: (join('', ['--custom-labels=namespace=', $namespace, ',core_openeverest_io_instance=test-pxc-cluster,core_openeverest_io_component=proxy']))
 ---
 apiVersion: v1
 kind: Secret
