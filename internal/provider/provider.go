@@ -42,6 +42,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	defaultEngineReplicas int32 = 3
+	defaultProxyReplicas  int32 = 2
+)
+
 // defaultSpec returns the default PerconaXtraDBClusterSpec for new instances.
 func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 	return pxcv1.PerconaXtraDBClusterSpec{
@@ -148,10 +153,14 @@ func ValidatePXC(c *controller.Context) error {
 	l.Info("Validating PXC cluster", "cluster", c.Name())
 
 	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok || engine.Replicas == nil {
-		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
+	if !ok {
+		return fmt.Errorf("instance spec missing %q component", common.ComponentEngine)
 	}
-	if *engine.Replicas < 1 {
+	engineReplicas := defaultEngineReplicas
+	if engine.Replicas != nil {
+		engineReplicas = *engine.Replicas
+	}
+	if engineReplicas < 1 {
 		return fmt.Errorf("%q replicas must be >= 1", common.ComponentEngine)
 	}
 
@@ -162,10 +171,11 @@ func ValidatePXC(c *controller.Context) error {
 	if proxy.Type == "" {
 		return fmt.Errorf("instance spec missing %q component type", common.ComponentProxy)
 	}
-	if proxy.Replicas == nil {
-		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentProxy)
+	proxyReplicas := defaultProxyReplicas
+	if proxy.Replicas != nil {
+		proxyReplicas = *proxy.Replicas
 	}
-	if *proxy.Replicas < 1 {
+	if proxyReplicas < 1 {
 		return fmt.Errorf("%q replicas must be >= 1", common.ComponentProxy)
 	}
 	switch proxy.Type {
@@ -233,10 +243,14 @@ func SyncPXC(c *controller.Context) error {
 
 	// Get the engine component spec
 	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok || engine.Replicas == nil {
-		return fmt.Errorf("instance spec missing %q component replicas", common.ComponentEngine)
+	if !ok {
+		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentEngine)
 	}
-	pxc.Spec.PXC.Size = *engine.Replicas
+	engineReplicas := defaultEngineReplicas
+	if engine.Replicas != nil {
+		engineReplicas = *engine.Replicas
+	}
+	pxc.Spec.PXC.Size = engineReplicas
 	if engine.Resources != nil {
 		pxc.Spec.PXC.Resources = *engine.Resources
 	}
@@ -261,12 +275,15 @@ func SyncPXC(c *controller.Context) error {
 	applyScheduling(pxc.Spec.PXC.PodSpec, engine.SchedulingPolicy, naming.LabelsPXC(pxc), corev1.LabelHostname)
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
-	if !ok || proxy.Type == "" || proxy.Replicas == nil {
+	if !ok || proxy.Type == "" {
 		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentProxy)
 	}
 
 	proxyType := proxy.Type
-	proxyReplicas := *proxy.Replicas
+	proxyReplicas := defaultProxyReplicas
+	if proxy.Replicas != nil {
+		proxyReplicas = *proxy.Replicas
+	}
 	// Proxies hold no data, so their replicas may share a node.
 	proxyAntiAffinityKey := pxcv1.AffinityTopologyKeyOff
 
@@ -302,7 +319,7 @@ func SyncPXC(c *controller.Context) error {
 	if pxc.Spec.HAProxyEnabled() {
 		proxyReplicasPtr = &pxc.Spec.HAProxy.Size
 	}
-	pxc.Spec.Unsafe = unsafeFlags(engine.Replicas, proxyReplicasPtr)
+	pxc.Spec.Unsafe = unsafeFlags(&engineReplicas, proxyReplicasPtr)
 
 	spec, err := c.ProviderSpec()
 	if err != nil {
@@ -316,7 +333,7 @@ func SyncPXC(c *controller.Context) error {
 	if engineConfig != "" {
 		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
-		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(*engine.Replicas, engine.Resources)
+		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(engineReplicas, engine.Resources)
 	}
 
 	// Set the image: use the user-specified image if provided, otherwise resolve
@@ -628,6 +645,7 @@ func NewPXCProviderInterface() *PXCProvider {
 			pxcv1.SchemeBuilder.AddToScheme,
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
 			monitoringv1.AddToScheme,
+			backupv1alpha1.SchemeBuilder.AddToScheme,
 		},
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes
