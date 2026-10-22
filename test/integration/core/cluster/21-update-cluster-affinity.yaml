@@ -28,4 +28,11 @@ spec:
     proxy:
       type: haproxy
       replicas: 1
+      schedulingPolicy:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 50
+                podAffinityTerm:
+                  topologyKey: topology.kubernetes.io/zone
 

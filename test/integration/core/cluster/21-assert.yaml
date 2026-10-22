@@ -19,6 +19,13 @@ spec:
     proxy:
       type: haproxy
       replicas: 1
+      schedulingPolicy:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 50
+                podAffinityTerm:
+                  topologyKey: topology.kubernetes.io/zone
 status:
   phase: Ready
 ---
@@ -37,6 +44,14 @@ spec:
               podAffinityTerm:
                 topologyKey: kubernetes.io/hostname
     (topologySpreadConstraints == null): true
+  haproxy:
+    affinity:
+      advanced:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                topologyKey: topology.kubernetes.io/zone
 status:
   state: ready
   pxc:
