@@ -1,0 +1,21 @@
+# With the entry gone, PMM is disabled and the Instance reports no
+# destinations.
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-bindings
+spec:
+  (pmm.enabled == null): true
+  (pmm.serverHost == null): true
+  pxc:
+    (sidecars == null): true
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+spec:
+  (monitoring == null): true
+status:
+  (monitoring.destinations == null): true
+  (length(conditions[?type == 'MonitoringConfigured'])): 0

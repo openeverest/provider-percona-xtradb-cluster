@@ -1,0 +1,100 @@
+---
+# The pmm class as the monitoring-pmm chart ships it, under a test-local name.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringClass
+metadata:
+  name: pmm-it
+spec:
+  controllerName: openeverest.io/monitoring-pmm
+  providerManaged:
+    integration: pmm
+    agentImage: percona/pmm-client:3.8.0
+    agentVersion: 3.8.0
+  destinationParametersSchema:
+    openAPIV3Schema:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          pattern: '^https?://.+'
+        verifyTLS:
+          type: boolean
+  instanceParametersSchema:
+    openAPIV3Schema:
+      type: object
+      properties:
+        resources:
+          type: object
+          properties:
+            limits:
+              type: object
+              additionalProperties:
+                type: string
+            requests:
+              type: object
+              additionalProperties:
+                type: string
+  credentialsSchema:
+    required: [apiKey]
+---
+# The prometheus class as the monitoring-prometheus chart ships it.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringClass
+metadata:
+  name: prometheus-it
+spec:
+  controllerName: openeverest.io/monitoring-prometheus
+  extensionManaged:
+    requires:
+      metrics: true
+  destinationParametersSchema:
+    openAPIV3Schema:
+      type: object
+      properties:
+        podMonitorLabels:
+          type: object
+          additionalProperties:
+            type: string
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pmm-it-token
+type: Opaque
+data:
+  apiKey: YWJjZGVm
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringDestination
+metadata:
+  name: pmm-it
+spec:
+  classRef:
+    name: pmm-it
+  credentialsSecretRef:
+    name: pmm-it-token
+  parameters:
+    url: http://pmm-it.example.com
+    verifyTLS: false
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringDestination
+metadata:
+  name: prometheus-it
+spec:
+  classRef:
+    name: prometheus-it
+  parameters:
+    podMonitorLabels:
+      release: kps
+---
+# The users Secret the operator (scaled to 0) would create: the provider mirrors
+# the PMM token into it and reads root for the connection details.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-pxc-bindings
+type: Opaque
+stringData:
+  root: test-password

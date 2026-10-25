@@ -120,6 +120,10 @@ test-integration: ## Run all integration tests against K8S cluster.
 test-integration-core: ## Run core integration tests.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
+.PHONY: test-integration-monitoring
+test-integration-monitoring: ## Run monitoring integration tests.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/monitoring
+
 .PHONY: test-integration-backup
 test-integration-backup: ## Run backup integration tests.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/backup

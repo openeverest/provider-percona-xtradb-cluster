@@ -1,0 +1,24 @@
+# Nothing requires metrics any more: the sidecar and its endpoint go, PMM and
+# HAProxy's own endpoint stay.
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-bindings
+spec:
+  pmm:
+    enabled: true
+    serverHost: pmm-it.example.com
+  pxc:
+    (sidecars == null): true
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+status:
+  monitoring:
+    (length(destinations)): 1
+    (destinations[0].name): pmm
+    (length(sources.metrics)): 1
+    (sources.metrics[0].component): proxy
+  (conditions[?type == 'MonitoringConfigured'].status | [0]): "True"

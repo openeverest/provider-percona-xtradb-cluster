@@ -1,0 +1,29 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 3
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1G
+      storage:
+        size: 10Gi
+    proxy:
+      type: haproxy
+      replicas: 1
+  monitoring:
+    destinations:
+      - name: pmm
+        destinationRef:
+          name: pmm-it
+        parameters:
+          resources:
+            limits:
+              memory: 400Mi

@@ -1,0 +1,4 @@
+# The provider creates no scrape objects for a binding; that is the class
+# controller's job.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
