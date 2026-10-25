@@ -375,8 +375,11 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 
-	if err := applyMonitoringSettings(c, pxc, spec); err != nil {
-		return err
+	_, legacyMonitoring := c.Instance().Spec.Components[common.ComponentMonitoring]
+	if legacyMonitoring {
+		if err := applyMonitoringSettings(c, pxc, spec); err != nil {
+			return err
+		}
 	}
 
 	if err := applyBackupSettings(c, pxc); err != nil {
@@ -391,10 +394,14 @@ func SyncPXC(c *controller.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := applyPrometheusExporter(pxc, monitoringParams, spec); err != nil {
+	if legacyMonitoring {
+		if err := applyPrometheusExporter(pxc, monitoringParams, spec); err != nil {
+			return err
+		}
+		applyCorootAnnotations(pxc, monitoringParams)
+	} else if err := applyMonitoring(c, pxc, spec); err != nil {
 		return err
 	}
-	applyCorootAnnotations(pxc, monitoringParams)
 
 	// When seeding from a DataSource, the target cluster's users secret must
 	// contain the same credentials as the source cluster: the restored datadir

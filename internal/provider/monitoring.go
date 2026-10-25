@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"regexp"
 	"strings"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -92,30 +90,6 @@ func applyMonitoringSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBClus
 	return nil
 }
 
-// pmmAdminParams returns the pmm-admin flags that label the instance's metrics
-// in PMM, so consumers can scope queries to one instance. Label names follow
-// the Prometheus form of the pod labels (core_openeverest_io_instance), and
-// namespace matches the label on Kubernetes metrics in PMM. The operator runs
-// pmm-admin through a shell; Kubernetes names need no quoting.
-func pmmAdminParams(c *controller.Context, component string) string {
-	labels := []string{
-		"namespace=" + c.Namespace(),
-		prometheusLabelName(controller.InstanceLabel) + "=" + c.Name(),
-	}
-	if component != "" {
-		labels = append(labels, prometheusLabelName(controller.ComponentLabel)+"="+component)
-	}
-	return "--custom-labels=" + strings.Join(labels, ",")
-}
-
-var invalidPrometheusLabelChars = regexp.MustCompile(`[^a-zA-Z0-9_]`)
-
-// prometheusLabelName converts a Kubernetes label key to a valid Prometheus
-// label name the way Prometheus does for Kubernetes service discovery.
-func prometheusLabelName(key string) string {
-	return invalidPrometheusLabelChars.ReplaceAllString(key, "_")
-}
-
 func monitoringConfigNameFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
 	cfg, err := monitoringParametersFromComponent(component)
 	if err != nil {
@@ -147,24 +121,6 @@ func monitoringParametersFromInstance(c *controller.Context) (*components.Monito
 		return &components.MonitoringParameters{}, nil
 	}
 	return monitoringParametersFromComponent(monitoringComponent)
-}
-
-func pmmServerHostFromURL(rawURL string) (string, error) {
-	if rawURL == "" {
-		return "", fmt.Errorf("url is empty")
-	}
-	if !strings.Contains(rawURL, "://") {
-		return strings.TrimSuffix(rawURL, "/"), nil
-	}
-
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-	if u.Host == "" {
-		return "", fmt.Errorf("missing host")
-	}
-	return u.Host, nil
 }
 
 func syncPMMCredentials(c *controller.Context, credentialsSecretName, pmmImage string) error {

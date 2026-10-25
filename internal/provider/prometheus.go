@@ -25,20 +25,8 @@ import (
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-const (
-	// monitorUser is the operator-managed MySQL user with the read-only
-	// grants (SELECT, PROCESS, REPLICATION CLIENT) that exporters need.
-	monitorUser = "monitor"
-
-	mysqldExporterContainerName = "mysqld-exporter"
-	mysqldExporterPortName      = "mysqld-exporter" // IANA port names allow at most 15 characters.
-	mysqldExporterPort          = 9104
-	mysqldExporterMetricsPath   = "/metrics"
 )
 
 func prometheusEnabled(params *components.MonitoringParameters) bool {
@@ -58,32 +46,6 @@ func applyPrometheusExporter(pxc *pxcv1.PerconaXtraDBCluster, params *components
 
 	pxc.Spec.PXC.Sidecars = append(pxc.Spec.PXC.Sidecars, mysqldExporterContainer(image, pxc.Spec.SecretsName))
 	return nil
-}
-
-func mysqldExporterContainer(image, usersSecretName string) corev1.Container {
-	return corev1.Container{
-		Name:            mysqldExporterContainerName,
-		Image:           image,
-		ImagePullPolicy: corev1.PullIfNotPresent,
-		Args: []string{
-			"--mysqld.address=127.0.0.1:3306",
-			"--mysqld.username=" + monitorUser,
-		},
-		Env: []corev1.EnvVar{{
-			Name: "MYSQLD_EXPORTER_PASSWORD",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: usersSecretName},
-					Key:                  monitorUser,
-				},
-			},
-		}},
-		Ports: []corev1.ContainerPort{{
-			Name:          mysqldExporterPortName,
-			ContainerPort: mysqldExporterPort,
-			Protocol:      corev1.ProtocolTCP,
-		}},
-	}
 }
 
 // syncPodMonitor creates the PodMonitor that scrapes the mysqld_exporter
@@ -128,8 +90,8 @@ func mysqldExporterPodMonitor(objectMeta metav1.ObjectMeta, podSelector, userLab
 		Spec: monitoringv1.PodMonitorSpec{
 			Selector: metav1.LabelSelector{MatchLabels: podSelector},
 			PodMetricsEndpoints: []monitoringv1.PodMetricsEndpoint{{
-				Port: new(mysqldExporterPortName),
-				Path: mysqldExporterMetricsPath,
+				Port: new(metricsPortName),
+				Path: metricsPath,
 			}},
 		},
 	}

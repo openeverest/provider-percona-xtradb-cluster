@@ -72,7 +72,7 @@ func TestApplyPrometheusExporter(t *testing.T) {
 		assert.Equal(t, "everest-secrets-db", secretRef.Name)
 		assert.Equal(t, monitorUser, secretRef.Key)
 		require.Len(t, sidecar.Ports, 1)
-		assert.Equal(t, mysqldExporterPortName, sidecar.Ports[0].Name)
+		assert.Equal(t, metricsPortName, sidecar.Ports[0].Name)
 		assert.LessOrEqual(t, len(sidecar.Ports[0].Name), 15)
 	})
 
@@ -105,7 +105,7 @@ func TestMySQLDExporterPodMonitorKeepsManagedLabels(t *testing.T) {
 	assert.Equal(t, selector, pm.Spec.Selector.MatchLabels)
 	require.Len(t, pm.Spec.PodMetricsEndpoints, 1)
 	require.NotNil(t, pm.Spec.PodMetricsEndpoints[0].Port)
-	assert.Equal(t, mysqldExporterPortName, *pm.Spec.PodMetricsEndpoints[0].Port)
+	assert.Equal(t, metricsPortName, *pm.Spec.PodMetricsEndpoints[0].Port)
 }
 
 func TestApplyCorootAnnotations(t *testing.T) {
