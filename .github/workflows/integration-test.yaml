@@ -30,7 +30,9 @@ permissions:
 
 env:
   IMG: provider-percona-xtradb-cluster:ci
-  OPENEVEREST_BRANCH: main
+  # Core controller under test; the monitoring binding controllers live in
+  # monitoring/02-controllers. Flips to main once the monitoring changes merge.
+  OPENEVEREST_BRANCH: monitoring/02-controllers
 
 jobs:
   run:
@@ -84,8 +86,6 @@ jobs:
 
       - name: Install CRDs
         run: make install-crds
-        env:
-          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
       - name: Deploy SeaweedFS for backup tests
         if: ${{ inputs.needs_seaweedfs }}
