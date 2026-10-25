@@ -21,13 +21,6 @@ spec:
       versions:
         - image: prom/mysqld-exporter:v0.20.0
           version: 0.20.0
-    pmm:
-      defaultVersion: 3.8.0
-      versions:
-        - image: percona/pmm-client:2.44.1-1
-          version: 2.44.1-1
-        - image: percona/pmm-client:3.8.0
-          version: 3.8.0
     proxysql:
       defaultVersion: 2.7.3-1.3
       versions:
@@ -73,28 +66,6 @@ spec:
               type: string
           type: object
       type: pxc
-    monitoring:
-      parametersSchema:
-        openAPIV3Schema:
-          properties:
-            coroot:
-              properties:
-                enabled:
-                  type: boolean
-              type: object
-            monitoringConfigName:
-              type: string
-            prometheus:
-              properties:
-                enabled:
-                  type: boolean
-                podMonitorLabels:
-                  additionalProperties:
-                    type: string
-                  type: object
-              type: object
-          type: object
-      type: pmm
     proxy:
       type: haproxy
   defaultVersion: 8.4.8
@@ -127,12 +98,6 @@ spec:
                     topologySpreadConstraints: {}
                 service: {}
                 storage: {}
-        monitoring:
-          optional: true
-          supportedFields:
-            openAPIV3Schema:
-              properties:
-                resources: {}
         proxy:
           supportedFields:
             openAPIV3Schema:
@@ -259,34 +224,6 @@ spec:
                 required: true
           description: Choose the Percona XtraDB Cluster version.
           label: Database Version
-        monitoring:
-          components:
-            coroot:
-              fieldParams:
-                helperText: Annotates MySQL pods so the Coroot cluster agent collects database metrics.
-                label: Coroot
-              path: spec.components.monitoring.parameters.coroot.enabled
-              uiType: toggle
-            monitoring:
-              dataSource:
-                provider: monitoringConfigs
-              fieldParams:
-                displayEmpty: true
-                label: Monitoring endpoint
-              path: spec.components.monitoring.parameters.monitoringConfigName
-              uiType: select
-            prometheus:
-              fieldParams:
-                helperText: Runs mysqld_exporter next to every MySQL node and creates a PodMonitor. Requires the Prometheus Operator.
-                label: Prometheus
-              path: spec.components.monitoring.parameters.prometheus.enabled
-              uiType: toggle
-          componentsOrder:
-            - monitoring
-            - prometheus
-            - coroot
-          description: Attach a PMM MonitoringConfig and/or enable experimental Prometheus and Coroot integrations.
-          label: Monitoring
         proxy:
           components:
             proxyNodes:
@@ -383,85 +320,71 @@ spec:
       sectionsOrder:
         - databaseVersion
         - resources
-        - monitoring
         - proxy
         - advanced
   versions:
     - components:
         backup: 8.4.0-5.1
         engine: 8.4.8-8.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.4.8
     - components:
         backup: 8.4.0-5.1
         engine: 8.4.7-7.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.4.7
     - components:
         backup: 8.4.0-5.1
         engine: 8.4.5-5.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.4.5
     - components:
         backup: 8.0.35-35.1
         engine: 8.0.45-36.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.0.45
     - components:
         backup: 8.0.35-35.1
         engine: 8.0.44-35.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.0.44
     - components:
         backup: 8.0.35-35.1
         engine: 8.0.42-33.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.0.42
     - components:
         backup: 8.0.35-35.1
         engine: 8.0.41-32.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.0.41
     - components:
         backup: 8.0.35-35.1
         engine: 8.0.39-30.1
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 8.0.39
     - components:
         backup: 2.4.29
         engine: 5.7.44-31.65
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 5.7.44
     - components:
         backup: 2.4.29
         engine: 5.7.42-31.65
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 5.7.42
     - components:
         backup: 2.4.29
         engine: 5.7.39-31.61
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 5.7.39
     - components:
         backup: 2.4.29
         engine: 5.7.36-31.55
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 5.7.36
     - components:
         backup: 2.4.29
         engine: 5.7.34-31.51
-        monitoring: 3.8.0
         proxy: 2.8.18-1
       name: 5.7.34

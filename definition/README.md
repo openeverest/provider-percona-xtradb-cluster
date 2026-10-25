@@ -11,6 +11,7 @@ here.
 definition/
 ├── provider.yaml                    # Provider name + component→type mapping
 ├── versions.yaml                    # Component types and their version/image catalog
+├── monitoring.yaml                  # Monitoring contract: integrations + metrics per component type
 ├── types.go                         # Shared types (TopologyType, Parameters)
 ├── components/
 │   └── types.go                     # Component parameters types
@@ -28,8 +29,9 @@ definition/
 
 | File | Purpose | When to edit |
 |------|---------|--------------|
-| `provider.yaml` | Names the provider and maps logical component names (e.g. `engine`, `monitoring`) to component types (e.g. `pxc`, `pmm`). | When adding/removing a component. |
+| `provider.yaml` | Names the provider and maps logical component names (e.g. `engine`, `proxy`) to component types (e.g. `pxc`, `haproxy`). | When adding/removing a component. |
 | `versions.yaml` | Lists available versions and container images for each component type. | When a new upstream release is available. |
+| `monitoring.yaml` | Declares the operator-native monitoring integrations (`pmm`) and how each component type exposes metrics; generated into `Provider.spec.monitoring`. | When a component type gains or loses a metrics endpoint. |
 | `types.go` | Shared Go types used across the provider (e.g. `TopologyType`, `Parameters`). | When adding provider-wide types. |
 | `components/types.go` | Go structs for component structured parameters, one per component type. | When a component type needs structured parameters. |
 | `topologies/<name>/topology.yaml` | Defines a deployment topology (which components, defaults) **and** its UI rendering hints — co-located for clarity. | When adding a topology or changing its UI. |

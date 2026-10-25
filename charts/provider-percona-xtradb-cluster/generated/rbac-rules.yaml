@@ -116,23 +116,10 @@
     - list
     - watch
 - apiGroups:
-    - monitoring.coreos.com
-  resources:
-    - podmonitors
-  verbs:
-    - create
-    - delete
-    - get
-    - list
-    - patch
-    - update
-    - watch
-- apiGroups:
     - monitoring.openeverest.io
   resources:
     - monitoringbindings
     - monitoringclasses
-    - monitoringconfigs
     - monitoringdestinations
   verbs:
     - get

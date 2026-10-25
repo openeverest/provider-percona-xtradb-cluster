@@ -18,6 +18,3 @@ components:
     type: haproxy
   backup:
     type: backup
-  monitoring:
-    type: pmm
-    parametersSchema: MonitoringParameters

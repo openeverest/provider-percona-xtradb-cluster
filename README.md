@@ -65,7 +65,7 @@ provider itself is covered under [Installation](#installation).
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.<name>.resources` |
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
-| Monitoring | ✅ | PMM, via the optional `monitoring` component; Prometheus and Coroot are experimental |
+| Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints for other monitoring classes, see [Monitoring](#monitoring) |
 | TLS | ⚠️ | the operator provisions certificates, but the connection string reported on the Instance requests `tls=false` |
 
 Stateful workloads additionally report:
@@ -141,7 +141,7 @@ spec:
 
 Component names are defined by this provider — see [definition/provider.yaml](definition/provider.yaml).
 `proxy` is required in the `cluster` topology, with an explicit `type` (`haproxy` or
-`proxysql`) and at least one replica — unlike `monitoring`, it is not defaulted.
+`proxysql`) and at least one replica.
 `spec.version` and `spec.topology` are optional; the provider defaults apply.
 More examples live in [examples/](examples/).
 
@@ -162,27 +162,26 @@ Credentials are in the secret named by `.status.connection.credentialsSecretRef`
 | `cluster` | ✅ | Galera cluster: 3 `engine` members by default, fronted by 2 `proxy` replicas |
 <!-- END GENERATED: topologies -->
 
-The `proxy` component defaults to HAProxy; ProxySQL images are also catalogued. The
-`monitoring` component is optional.
+The `proxy` component defaults to HAProxy; ProxySQL images are also catalogued.
 
 ## Versions
 
 <!-- BEGIN GENERATED: versions -->
-| Version bundle | Default | pxc | backup (XtraBackup) | pmm |
-|---|---|---|---|---|
-| `8.4.8` | ✅ | `8.4.8-8.1` | `8.4.0-5.1` | `3.8.0` |
-| `8.4.7` | | `8.4.7-7.1` | `8.4.0-5.1` | `3.8.0` |
-| `8.4.5` | | `8.4.5-5.1` | `8.4.0-5.1` | `3.8.0` |
-| `8.0.45` | | `8.0.45-36.1` | `8.0.35-35.1` | `3.8.0` |
-| `8.0.44` | | `8.0.44-35.1` | `8.0.35-35.1` | `3.8.0` |
-| `8.0.42` | | `8.0.42-33.1` | `8.0.35-35.1` | `3.8.0` |
-| `8.0.41` | | `8.0.41-32.1` | `8.0.35-35.1` | `3.8.0` |
-| `8.0.39` | | `8.0.39-30.1` | `8.0.35-35.1` | `3.8.0` |
-| `5.7.44` | | `5.7.44-31.65` | `2.4.29` | `3.8.0` |
-| `5.7.42` | | `5.7.42-31.65` | `2.4.29` | `3.8.0` |
-| `5.7.39` | | `5.7.39-31.61` | `2.4.29` | `3.8.0` |
-| `5.7.36` | | `5.7.36-31.55` | `2.4.29` | `3.8.0` |
-| `5.7.34` | | `5.7.34-31.51` | `2.4.29` | `3.8.0` |
+| Version bundle | Default | pxc | backup (XtraBackup) |
+|---|---|---|---|
+| `8.4.8` | ✅ | `8.4.8-8.1` | `8.4.0-5.1` |
+| `8.4.7` | | `8.4.7-7.1` | `8.4.0-5.1` |
+| `8.4.5` | | `8.4.5-5.1` | `8.4.0-5.1` |
+| `8.0.45` | | `8.0.45-36.1` | `8.0.35-35.1` |
+| `8.0.44` | | `8.0.44-35.1` | `8.0.35-35.1` |
+| `8.0.42` | | `8.0.42-33.1` | `8.0.35-35.1` |
+| `8.0.41` | | `8.0.41-32.1` | `8.0.35-35.1` |
+| `8.0.39` | | `8.0.39-30.1` | `8.0.35-35.1` |
+| `5.7.44` | | `5.7.44-31.65` | `2.4.29` |
+| `5.7.42` | | `5.7.42-31.65` | `2.4.29` |
+| `5.7.39` | | `5.7.39-31.61` | `2.4.29` |
+| `5.7.36` | | `5.7.36-31.55` | `2.4.29` |
+| `5.7.34` | | `5.7.34-31.51` | `2.4.29` |
 <!-- END GENERATED: versions -->
 
 Source of truth: [definition/versions.yaml](definition/versions.yaml).
@@ -203,14 +202,25 @@ The technology-specific knobs worth knowing about:
 | Parameter | Applies to | Purpose |
 |---|---|---|
 | `configuration` | `engine` | Raw `my.cnf` configuration passed to the operator |
-| `monitoringConfigName` | `monitoring` | PMM configuration to attach the instance to |
-| `prometheus.enabled` | `monitoring` | Experimental: `mysqld_exporter` sidecar on MySQL pods plus a `PodMonitor` (requires the Prometheus Operator); `prometheus.podMonitorLabels` match your `podMonitorSelector` |
-| `coroot.enabled` | `monitoring` | Experimental: [Coroot pod annotations](https://docs.coroot.com/databases/mysql#kubernetes-pod-annotations) on MySQL pods; credentials come from the users Secret |
 
-With PMM monitoring enabled, the instance's metrics in PMM carry `namespace` and
-`core_openeverest_io_instance` labels, plus `core_openeverest_io_component=proxy` on ProxySQL,
-so they can be queried per instance. HAProxy metrics are not labelled: the operator does not
-let the provider set their `pmm-admin` flags.
+### Monitoring
+
+An Instance sends monitoring data to the `MonitoringDestination`s listed in
+`spec.monitoring.destinations[]`; each destination belongs to the class of an installed
+monitoring extension.
+
+- **PMM** (`pmm` class): the provider renders the operator's `spec.pmm` from the
+  destination (server `url`, PMM 3 service account token under `apiKey` in its credentials
+  Secret) and the agent image of the class. The entry's `parameters.resources` override the
+  PMM client requests sized from the engine memory. Metrics in PMM carry `namespace` and
+  `core_openeverest_io_instance` labels, plus `core_openeverest_io_component=proxy` on
+  ProxySQL; HAProxy metrics are not labelled: the operator does not let the provider set
+  their `pmm-admin` flags.
+- **Classes that scrape metrics** (Prometheus, VictoriaMetrics, …): while one is bound the
+  provider runs a `mysqld_exporter` sidecar on the MySQL pods (adding or removing it restarts
+  them one at a time); it connects as the operator's `monitor` user. Once the cluster is
+  Ready the exporter and HAProxy's own `/metrics` endpoint are published in
+  `status.monitoring.sources`.
 
 ## Development
 
@@ -253,7 +263,7 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Unit tests** — `make test-unit`.
 - **Integration tests** — `make test-integration` runs the chainsaw suites; individual suites
   are also exposed as make targets (`make test-integration-core`,
-  `make test-integration-backup`, `make test-integration-monitoring-pmm`, …).
+  `make test-integration-backup`, …).
 - **CI** — [.github/workflows/ci.yaml](.github/workflows/ci.yaml) runs lint, build, unit
   tests, generated-file verification, Helm lint, and each integration suite on every pull
   request.
