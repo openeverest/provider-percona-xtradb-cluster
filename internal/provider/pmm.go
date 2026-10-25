@@ -21,6 +21,7 @@ import (
 	"maps"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -56,8 +57,9 @@ var (
 )
 
 // pmmResources returns the PMM client resources: requests sized from the
-// engine's memory, overridden by whatever the entry sets.
-func pmmResources(engine, entry *corev1.ResourceRequirements) corev1.ResourceRequirements {
+// engine's memory, overridden by whatever the entry sets. A sized request
+// above a limit the entry sets is lowered to that limit.
+func pmmResources(engine, entry *corev1.ResourceRequirements) (corev1.ResourceRequirements, error) {
 	requests := pmmRequestsSmall
 	switch mem := memoryLimitOrRequest(engine); {
 	case mem.Cmp(pxcMemLarge) >= 0:
@@ -67,11 +69,25 @@ func pmmResources(engine, entry *corev1.ResourceRequirements) corev1.ResourceReq
 	}
 
 	out := corev1.ResourceRequirements{Requests: maps.Clone(requests)}
-	if entry != nil {
-		maps.Copy(out.Requests, entry.Requests)
-		out.Limits = maps.Clone(entry.Limits)
+	if entry == nil {
+		return out, nil
 	}
-	return out
+	for _, name := range slices.Sorted(maps.Keys(entry.Limits)) {
+		limit := entry.Limits[name]
+		if request, set := entry.Requests[name]; set {
+			if request.Cmp(limit) > 0 {
+				return corev1.ResourceRequirements{}, fmt.Errorf("resources.requests.%s (%s) is above resources.limits.%s (%s)",
+					name, request.String(), name, limit.String())
+			}
+			continue
+		}
+		if sized, ok := out.Requests[name]; ok && sized.Cmp(limit) > 0 {
+			out.Requests[name] = limit
+		}
+	}
+	maps.Copy(out.Requests, entry.Requests)
+	out.Limits = maps.Clone(entry.Limits)
+	return out, nil
 }
 
 // pmmAdminParams returns the pmm-admin flags that label the instance's metrics

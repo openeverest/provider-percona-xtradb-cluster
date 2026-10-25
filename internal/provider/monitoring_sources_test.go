@@ -27,12 +27,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const (
@@ -59,6 +61,13 @@ var monTestProviderSpec = corev1alpha1.ProviderSpec{
 // its Provider.
 func monitoringContext(t *testing.T, entries []corev1alpha1.InstanceMonitoringDestination, objs ...client.Object) *controller.Context {
 	t.Helper()
+	return monitoringContextIntercepted(t, entries, interceptor.Funcs{}, objs...)
+}
+
+// monitoringContextIntercepted is monitoringContext with a client whose calls
+// go through funcs.
+func monitoringContextIntercepted(t *testing.T, entries []corev1alpha1.InstanceMonitoringDestination, funcs interceptor.Funcs, objs ...client.Object) *controller.Context {
+	t.Helper()
 
 	scheme := runtime.NewScheme()
 	require.NoError(t, corev1.AddToScheme(scheme))
@@ -83,7 +92,7 @@ func monitoringContext(t *testing.T, entries []corev1alpha1.InstanceMonitoringDe
 		ObjectMeta: metav1.ObjectMeta{Name: "percona-xtradb-cluster"},
 		Spec:       monTestProviderSpec,
 	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(append(objs, in, provider)...).Build()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(append(objs, in, provider)...).WithInterceptorFuncs(funcs).Build()
 	return controller.NewContext(context.Background(), cl, in, provider.Name)
 }
 
@@ -206,7 +215,8 @@ func monPMMCredentials() *corev1.Secret {
 	return monSecret("pmm-prod-credentials", map[string]string{pmmAPIKeyKey: "glsa_token"})
 }
 
-// monLivePXC is the engine CR as the operator currently holds it.
+// monLivePXC is the engine CR as the operator currently holds it, with every
+// pod ready when state is Ready.
 func monLivePXC(state pxcv1.AppState, proxyType string, exporter, pmm bool) *pxcv1.PerconaXtraDBCluster {
 	pxc := &pxcv1.PerconaXtraDBCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: monTestInstance, Namespace: monTestNamespace},
@@ -222,11 +232,27 @@ func monLivePXC(state pxcv1.AppState, proxyType string, exporter, pmm bool) *pxc
 	case common.ProxyTypeProxySQL:
 		pxc.Spec.ProxySQL = &pxcv1.ProxySQLSpec{PodSpec: pxcv1.PodSpec{Enabled: true}}
 	}
+	if state == pxcv1.AppStateReady {
+		monReadyPods(pxc, 3, 2)
+	}
 	if exporter {
 		pxc.Spec.PXC.Sidecars = []corev1.Container{{Name: mysqldExporterContainerName}}
 	}
 	if pmm {
 		pxc.Spec.PMM = &pxcv1.PMMSpec{Enabled: true, ServerHost: "live-pmm.example.com", Image: "percona/pmm-client:3.7.0"}
+	}
+	return pxc
+}
+
+// monReadyPods sets how many engine and proxy pods the operator reports
+// ready.
+func monReadyPods(pxc *pxcv1.PerconaXtraDBCluster, engine, proxy int32) *pxcv1.PerconaXtraDBCluster {
+	pxc.Status.PXC.Ready = engine
+	switch {
+	case pxc.Spec.HAProxyEnabled():
+		pxc.Status.HAProxy.Ready = proxy
+	case pxc.Spec.ProxySQLEnabled():
+		pxc.Status.ProxySQL.Ready = proxy
 	}
 	return pxc
 }
@@ -285,7 +311,17 @@ func TestMonitoringSources(t *testing.T) {
 			want: []corev1alpha1.MetricsEndpoint{haproxy},
 		},
 		{
-			name: "nothing while the cluster is not Ready",
+			name: "a rolling restart keeps the endpoints",
+			objs: []client.Object{monReadyPods(monLivePXC(pxcv1.AppStateInit, common.ProxyTypeHAProxy, true, false), 2, 1)},
+			want: []corev1alpha1.MetricsEndpoint{engine, haproxy},
+		},
+		{
+			name: "each component once one of its pods is ready",
+			objs: []client.Object{monReadyPods(monLivePXC(pxcv1.AppStateInit, common.ProxyTypeHAProxy, true, false), 0, 1)},
+			want: []corev1alpha1.MetricsEndpoint{haproxy},
+		},
+		{
+			name: "nothing before a pod is ready",
 			objs: []client.Object{monLivePXC(pxcv1.AppStateInit, common.ProxyTypeHAProxy, true, false)},
 		},
 		{
@@ -563,7 +599,7 @@ func TestPMMRenderFailed(t *testing.T) {
 			name:        "missing credentials Secret",
 			binding:     monPMMBinding(true, ""),
 			destination: monPMMDestination(),
-			wantMessage: `get credentials Secret of MonitoringDestination pmm-prod: secrets "pmm-prod-credentials" not found`,
+			wantMessage: "credentials Secret pmm-prod-credentials of MonitoringDestination pmm-prod not found",
 		},
 		{
 			name:        "credentials Secret without apiKey",
@@ -578,6 +614,13 @@ func TestPMMRenderFailed(t *testing.T) {
 			destination: monPMMDestination(),
 			credentials: monPMMCredentials(),
 			wantMessage: "decode parameters of destination entry pmm",
+		},
+		{
+			name:        "entry request above its own limit",
+			binding:     monPMMBinding(true, `{"resources":{"requests":{"cpu":"2"},"limits":{"cpu":"1"}}}`),
+			destination: monPMMDestination(),
+			credentials: monPMMCredentials(),
+			wantMessage: "parameters of destination entry pmm: resources.requests.cpu (2) is above resources.limits.cpu (1)",
 		},
 	}
 	for _, tt := range tests {
@@ -610,6 +653,46 @@ func TestPMMRenderFailed(t *testing.T) {
 	}
 }
 
+func TestPMMAPIErrorsFailSync(t *testing.T) {
+	t.Parallel()
+
+	unavailable := apierrors.NewServiceUnavailable("etcd is unavailable")
+	tests := []struct {
+		name  string
+		funcs interceptor.Funcs
+	}{
+		{
+			name: "reading the credentials Secret",
+			funcs: interceptor.Funcs{Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if key.Name == "pmm-prod-credentials" {
+					return unavailable
+				}
+				return cl.Get(ctx, key, obj, opts...)
+			}},
+		},
+		{
+			name: "mirroring the token",
+			funcs: interceptor.Funcs{Patch: func(context.Context, client.WithWatch, client.Object, client.Patch, ...client.PatchOption) error {
+				return unavailable
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := monitoringContextIntercepted(t, []corev1alpha1.InstanceMonitoringDestination{monEntry("pmm", "pmm-prod")}, tt.funcs,
+				monPMMBinding(true, ""), monPMMDestination(), monPMMClass(), monPMMCredentials(),
+				monSecret(monTestUsersSecret, nil),
+				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, true),
+			)
+
+			require.ErrorIs(t, applyMonitoring(c, monDesiredPXC(), &monTestProviderSpec), unavailable)
+			_, _, staged := c.MonitoringBindingResult(monBindingName("pmm"))
+			assert.False(t, staged, "an API error is retried, not reported on the binding")
+		})
+	}
+}
+
 func TestPMMResources(t *testing.T) {
 	t.Parallel()
 
@@ -618,10 +701,11 @@ func TestPMMResources(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
-		engine *corev1.ResourceRequirements
-		entry  *corev1.ResourceRequirements
-		want   corev1.ResourceRequirements
+		name    string
+		engine  *corev1.ResourceRequirements
+		entry   *corev1.ResourceRequirements
+		want    corev1.ResourceRequirements
+		wantErr string
 	}{
 		{
 			name:   "small engine",
@@ -657,11 +741,61 @@ func TestPMMResources(t *testing.T) {
 				Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
 			},
 		},
+		{
+			name:   "entry limits below the sized requests lower them",
+			engine: engine("64Gi"),
+			entry: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("50m"),
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
+				},
+			},
+			want: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("50m"),
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
+				},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("50m"),
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
+				},
+			},
+		},
+		{
+			name:   "entry request below its own limit",
+			engine: engine("64Gi"),
+			entry: &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")},
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+			},
+			want: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("228m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")},
+			},
+		},
+		{
+			name:   "entry request above its own limit",
+			engine: engine("2Gi"),
+			entry: &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+				Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("512Mi")},
+			},
+			wantErr: "resources.requests.memory (1Gi) is above resources.limits.memory (512Mi)",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, pmmResources(tt.engine, tt.entry))
+			got, err := pmmResources(tt.engine, tt.entry)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

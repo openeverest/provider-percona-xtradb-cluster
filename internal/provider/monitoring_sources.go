@@ -52,9 +52,10 @@ func (p *PXCProvider) MonitoringIntegrations() []string {
 	return []string{pmmIntegration}
 }
 
-// MonitoringSources implements controller.MonitoringSourcesProvider. Once the
-// cluster is Ready it publishes HAProxy's own endpoint and, while the engine
-// pods carry the mysqld_exporter sidecar, the exporter's.
+// MonitoringSources implements controller.MonitoringSourcesProvider. It
+// publishes HAProxy's own endpoint and, while the engine pods carry the
+// mysqld_exporter sidecar, the exporter's, each while a pod of its component
+// is ready.
 func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.MonitoringSources, error) {
 	sources := &corev1alpha1.MonitoringSources{}
 	pxc := &pxcv1.PerconaXtraDBCluster{}
@@ -64,11 +65,8 @@ func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.Mo
 		}
 		return nil, fmt.Errorf("get PerconaXtraDBCluster: %w", err)
 	}
-	if pxc.Status.Status != pxcv1.AppStateReady {
-		return sources, nil
-	}
 
-	if hasMetricsExporter(pxc) {
+	if hasMetricsExporter(pxc) && pxc.Status.PXC.Ready > 0 {
 		sources.Metrics = append(sources.Metrics, corev1alpha1.MetricsEndpoint{
 			Component: common.ComponentEngine,
 			Kind:      "mysql",
@@ -81,7 +79,7 @@ func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.Mo
 			Scheme: "http",
 		})
 	}
-	if pxc.Spec.HAProxyEnabled() {
+	if pxc.Spec.HAProxyEnabled() && pxc.Status.HAProxy.Ready > 0 {
 		sources.Metrics = append(sources.Metrics, corev1alpha1.MetricsEndpoint{
 			Component: common.ComponentProxy,
 			Kind:      "haproxy",
@@ -121,8 +119,8 @@ func applyMonitoring(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster, pro
 
 // applyPMM renders spec.pmm from the Instance's pmm binding, turns PMM off once
 // no entry asks for it, and keeps the live spec.pmm while that is unresolved
-// (hold rule). A binding that cannot be rendered is reported on the binding
-// and keeps the live spec.pmm too; it never fails Sync.
+// (hold rule). A binding whose inputs cannot be rendered is reported on the
+// binding and keeps the live spec.pmm too; only API errors fail Sync.
 func applyPMM(c *controller.Context, pxc, live *pxcv1.PerconaXtraDBCluster, required controller.Requirement) error {
 	if !required.Else(live != nil && live.Spec.PMM != nil && live.Spec.PMM.Enabled) {
 		pxc.Spec.PMM = nil
@@ -141,7 +139,11 @@ func applyPMM(c *controller.Context, pxc, live *pxcv1.PerconaXtraDBCluster, requ
 		if !rb.Apply || rb.Integration() != pmmIntegration {
 			continue
 		}
-		pmm, token, err := renderPMM(c, rb)
+		credentials, err := pmmCredentials(c, rb.Destination)
+		if err != nil {
+			return err
+		}
+		pmm, token, err := renderPMM(c, rb, credentials)
 		if err != nil {
 			c.SetMonitoringBindingResult(rb.Binding.Name, monitoringv1alpha1.ReasonRenderFailed, err.Error())
 			keepLivePMM(pxc, live)
@@ -161,9 +163,25 @@ func keepLivePMM(pxc, live *pxcv1.PerconaXtraDBCluster) {
 	}
 }
 
+// pmmCredentials returns the destination's credentials Secret, nil when the
+// destination names none or the Secret does not exist.
+func pmmCredentials(c *controller.Context, destination *monitoringv1alpha1.MonitoringDestination) (*corev1.Secret, error) {
+	if destination.Spec.CredentialsSecretRef == nil {
+		return nil, nil
+	}
+	secret := &corev1.Secret{}
+	if err := c.Get(secret, destination.Spec.CredentialsSecretRef.Name); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get credentials Secret of MonitoringDestination %s: %w", destination.Name, err)
+	}
+	return secret, nil
+}
+
 // renderPMM builds spec.pmm for an Apply-able pmm binding and returns the PMM
 // server token to mirror. Errors describe an input the user has to fix.
-func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMMSpec, []byte, error) {
+func renderPMM(c *controller.Context, rb controller.ResolvedBinding, credentials *corev1.Secret) (*pxcv1.PMMSpec, []byte, error) {
 	destination := pmmDestinationParameters{}
 	if rb.Destination.Spec.Parameters != nil {
 		if err := json.Unmarshal(rb.Destination.Spec.Parameters.Raw, &destination); err != nil {
@@ -182,12 +200,17 @@ func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMM
 		}
 	}
 
+	resources, err := pmmResources(c.Instance().Spec.Components[common.ComponentEngine].Resources, entry.Resources)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parameters of destination entry %s: %w", rb.Entry.Name, err)
+	}
+
 	if rb.Destination.Spec.CredentialsSecretRef == nil {
 		return nil, nil, fmt.Errorf("MonitoringDestination %s has no credentialsSecretRef", rb.Destination.Name)
 	}
-	credentials := &corev1.Secret{}
-	if err := c.Get(credentials, rb.Destination.Spec.CredentialsSecretRef.Name); err != nil {
-		return nil, nil, fmt.Errorf("get credentials Secret of MonitoringDestination %s: %w", rb.Destination.Name, err)
+	if credentials == nil {
+		return nil, nil, fmt.Errorf("credentials Secret %s of MonitoringDestination %s not found",
+			rb.Destination.Spec.CredentialsSecretRef.Name, rb.Destination.Name)
 	}
 	token := credentials.Data[pmmAPIKeyKey]
 	if len(token) == 0 {
@@ -200,7 +223,7 @@ func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMM
 		Image:             rb.Class.Spec.ProviderManaged.AgentImage,
 		CustomClusterName: c.Name(),
 		ImagePullPolicy:   corev1.PullIfNotPresent,
-		Resources:         pmmResources(c.Instance().Spec.Components[common.ComponentEngine].Resources, entry.Resources),
+		Resources:         resources,
 		PxcParams:         pmmAdminParams(c, ""),
 		// The operator hard-codes the pmm-admin params of HAProxy, so only
 		// ProxySQL can carry the instance labels.

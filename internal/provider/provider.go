@@ -616,6 +616,7 @@ func NewPXCProviderInterface() *PXCProvider {
 		ProviderName: "percona-xtradb-cluster",
 		SchemeFuncs: []func(*runtime.Scheme) error{
 			pxcv1.SchemeBuilder.AddToScheme,
+			// Sync lists MonitoringBindings and the conformance harness's scheme has only these.
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
 			backupv1alpha1.SchemeBuilder.AddToScheme,
 		},
