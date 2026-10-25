@@ -19,6 +19,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - pods
   verbs:
   - get
@@ -133,11 +139,20 @@ rules:
 - apiGroups:
   - monitoring.openeverest.io
   resources:
+  - monitoringbindings
+  - monitoringclasses
   - monitoringconfigs
+  - monitoringdestinations
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - monitoring.openeverest.io
+  resources:
+  - monitoringbindings/status
+  verbs:
+  - patch
 - apiGroups:
   - pxc.percona.com
   resources:

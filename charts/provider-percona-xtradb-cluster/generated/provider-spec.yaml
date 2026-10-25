@@ -98,6 +98,17 @@ spec:
     proxy:
       type: haproxy
   defaultVersion: 8.4.8
+  monitoring:
+    componentTypes:
+      haproxy:
+        kind: haproxy
+        metrics: Native
+      pxc:
+        kind: mysql
+        metrics: Exporter
+    integrations:
+      pmm:
+        agentVersions: '>=3.0.0 <4.0.0'
   release:
     version: 0.3.0
   topologies:
@@ -204,7 +215,7 @@ spec:
               componentsOrder:
                 - policy
               description: Control how database pods are scheduled onto nodes using affinity rules.
-              groupType: toggleable
+              groupType: bordered
               label: Pod scheduling policy
               uiType: group
             storageClass:
