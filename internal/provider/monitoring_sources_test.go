@@ -16,6 +16,10 @@ package provider
 
 import (
 	"context"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
@@ -35,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -343,7 +348,12 @@ func TestMonitoringSources(t *testing.T) {
 func TestMonitoringIntegrations(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"pmm"}, (&PXCProvider{}).MonitoringIntegrations())
+	raw, err := os.ReadFile(filepath.Join("..", "..", "definition", "monitoring.yaml"))
+	require.NoError(t, err)
+	definition := corev1alpha1.ProviderMonitoring{}
+	require.NoError(t, yaml.Unmarshal(raw, &definition))
+
+	assert.ElementsMatch(t, slices.Collect(maps.Keys(definition.Integrations)), (&PXCProvider{}).MonitoringIntegrations())
 }
 
 func TestMetricsExporterFollowsRequiredSources(t *testing.T) {
@@ -439,6 +449,7 @@ func TestPMMFollowsRequiredSources(t *testing.T) {
 		wantNoPMM  bool
 		wantToken  string
 		wantMirror bool
+		wantResult monitoringv1alpha1.ConfiguredReason
 	}{
 		{
 			name:    "an Accepted binding is rendered",
@@ -480,14 +491,20 @@ func TestPMMFollowsRequiredSources(t *testing.T) {
 			name:    "an entry without a binding keeps the live spec.pmm",
 			entries: pmmEntry,
 			objs: []client.Object{
+				monSecret(monTestUsersSecret, map[string]string{pmmServerTokenKey: "old_token"}),
 				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, true),
 			},
-			wantLive: true,
+			wantLive:   true,
+			wantToken:  "old_token",
+			wantMirror: true,
 		},
 		{
-			name:      "an entry without a binding enables nothing",
-			entries:   pmmEntry,
-			objs:      []client.Object{monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false)},
+			name:    "an entry without a binding enables nothing",
+			entries: pmmEntry,
+			objs: []client.Object{
+				monSecret(monTestUsersSecret, nil),
+				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false),
+			},
 			wantNoPMM: true,
 		},
 		{
@@ -497,6 +514,37 @@ func TestPMMFollowsRequiredSources(t *testing.T) {
 				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, true),
 			},
 			wantNoPMM: true,
+		},
+		{
+			name: "a removed entry disables PMM while its binding remains",
+			objs: []client.Object{
+				monPMMBinding(true, ""), monPMMDestination(), monPMMClass(), monPMMCredentials(),
+				monSecret(monTestUsersSecret, map[string]string{pmmServerTokenKey: "old_token"}),
+				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, true),
+			},
+			wantNoPMM: true,
+		},
+		{
+			name:    "a usable binding is rendered next to an entry without a binding",
+			entries: []corev1alpha1.InstanceMonitoringDestination{monEntry("pmm", "pmm-prod"), monEntry("prometheus", "prometheus")},
+			objs: []client.Object{
+				monPMMBinding(true, ""), monPMMDestination(), monPMMClass(), monPMMCredentials(),
+				monSecret(monTestUsersSecret, nil),
+				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false),
+			},
+			wantHost:   "pmm.example.com:8443",
+			wantToken:  "glsa_token",
+			wantMirror: true,
+		},
+		{
+			name:    "a binding that cannot be rendered enables nothing before the cluster exists",
+			entries: pmmEntry,
+			objs: []client.Object{
+				monPMMBinding(true, ""), monDestination("pmm-prod", "pmm", `{}`, "pmm-prod-credentials"), monPMMClass(), monPMMCredentials(),
+				monSecret(monTestUsersSecret, nil),
+			},
+			wantNoPMM:  true,
+			wantResult: monitoringv1alpha1.ReasonRenderFailed,
 		},
 	}
 	for _, tt := range tests {
@@ -519,13 +567,12 @@ func TestPMMFollowsRequiredSources(t *testing.T) {
 			}
 
 			users := &corev1.Secret{}
-			if err := c.Get(users, monTestUsersSecret); err == nil {
-				token, mirrored := users.Data[pmmServerTokenKey]
-				assert.Equal(t, tt.wantMirror, mirrored)
-				assert.Equal(t, tt.wantToken, string(token))
-			}
-			_, _, staged := c.MonitoringBindingResult(monBindingName("pmm"))
-			assert.False(t, staged)
+			require.NoError(t, c.Get(users, monTestUsersSecret))
+			token, mirrored := users.Data[pmmServerTokenKey]
+			assert.Equal(t, tt.wantMirror, mirrored)
+			assert.Equal(t, tt.wantToken, string(token))
+			reason, _, _ := c.MonitoringBindingResult(monBindingName("pmm"))
+			assert.Equal(t, tt.wantResult, reason)
 		})
 	}
 }
@@ -575,6 +622,13 @@ func TestPMMRenderFailed(t *testing.T) {
 		credentials *corev1.Secret
 		wantMessage string
 	}{
+		{
+			name:        "destination parameters that do not decode",
+			binding:     monPMMBinding(true, ""),
+			destination: monDestination("pmm-prod", "pmm", `{"url":443}`, "pmm-prod-credentials"),
+			credentials: monPMMCredentials(),
+			wantMessage: "decode MonitoringDestination pmm-prod parameters",
+		},
 		{
 			name:        "destination without url",
 			binding:     monPMMBinding(true, ""),
