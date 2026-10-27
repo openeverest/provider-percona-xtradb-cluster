@@ -165,7 +165,6 @@ func monPMMClass() *monitoringv1alpha1.MonitoringClass {
 	return &monitoringv1alpha1.MonitoringClass{
 		ObjectMeta: metav1.ObjectMeta{Name: "pmm"},
 		Spec: monitoringv1alpha1.MonitoringClassSpec{
-			ControllerName: "openeverest.io/monitoring-pmm",
 			ProviderManaged: &monitoringv1alpha1.ProviderManagedFulfilment{
 				Integration:  pmmIntegration,
 				AgentImage:   monTestPMMImage,
@@ -179,7 +178,6 @@ func monPrometheusClass() *monitoringv1alpha1.MonitoringClass {
 	return &monitoringv1alpha1.MonitoringClass{
 		ObjectMeta: metav1.ObjectMeta{Name: "prometheus"},
 		Spec: monitoringv1alpha1.MonitoringClassSpec{
-			ControllerName: "openeverest.io/monitoring-prometheus",
 			ExtensionManaged: &monitoringv1alpha1.ExtensionManagedFulfilment{
 				Requires: monitoringv1alpha1.SourceRequirements{Metrics: true},
 			},

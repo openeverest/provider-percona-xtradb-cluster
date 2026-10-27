@@ -5,7 +5,6 @@ kind: MonitoringClass
 metadata:
   name: pmm-it
 spec:
-  controllerName: openeverest.io/monitoring-pmm
   providerManaged:
     integration: pmm
     agentImage: percona/pmm-client:3.8.0
@@ -44,7 +43,6 @@ kind: MonitoringClass
 metadata:
   name: prometheus-it
 spec:
-  controllerName: openeverest.io/monitoring-prometheus
   extensionManaged:
     requires:
       metrics: true
