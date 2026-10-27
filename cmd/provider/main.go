@@ -45,11 +45,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Inject the manager's client so watch handlers can
-	// list Instance objects that reference MonitoringConfig.
-	// TODO: change the way manager is configured so injection is not necessary.
-	provider.SetClient(r.GetManager().GetClient())
-
 	if err := r.Start(ctx); err != nil {
 		l.Error(err, "unable to start reconciler")
 		os.Exit(1)

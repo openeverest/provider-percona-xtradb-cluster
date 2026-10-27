@@ -17,5 +17,5 @@
    Verify it with: kubectl get providers.core.openeverest.io {{ .Values.provider.name }}
 
 NOTE: Ensure that the following prerequisites are installed in your cluster:
-  - OpenEverest CRDs (Instances, Providers, MonitoringConfigs)
+  - OpenEverest CRDs (Instances, Providers, MonitoringClasses, MonitoringDestinations, MonitoringBindings)
   - Percona XtraDBCluster Operator (v1.20.0+)

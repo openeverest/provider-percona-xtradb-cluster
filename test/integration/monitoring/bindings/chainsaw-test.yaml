@@ -1,0 +1,122 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: monitoring-bindings
+spec:
+  description: |
+    Monitoring through Instance.spec.monitoring.destinations[]: core
+    materialises a ProviderManaged pmm binding and an ExtensionManaged
+    prometheus binding. The provider renders spec.pmm from the first, runs
+    the mysqld_exporter sidecar for the second and, once the cluster is
+    Ready, publishes the exporter and HAProxy endpoints. Dropping the
+    prometheus entry removes the sidecar, deleting the pmm destination keeps
+    the live spec.pmm, and dropping the pmm entry disables PMM. No extension
+    controller runs here, so the classes are claimed by hand and the
+    prometheus binding is never Configured; the Percona operator is scaled
+    to 0.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com,monitoringdestination,monitoringbinding,secret -o yaml
+    - script:
+        content: kubectl get monitoringclass -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: setup
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+        # The PodMonitor CRD is installed only to prove the provider creates
+        # none for a binding.
+        - script:
+            timeout: 120s
+            content: |
+              kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.94.2/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+              kubectl wait --for=condition=Established --timeout=60s crd/podmonitors.monitoring.coreos.com
+        - apply:
+            file: 00-install.yaml
+        # Stand in for the extension controllers: a class is usable only once
+        # its controller has claimed it.
+        - script:
+            content: |
+              for class in pmm-it prometheus-it; do
+                kubectl patch monitoringclass/$class --subresource status --type merge \
+                  -p '{"status":{"conditions":[{"type":"Accepted","status":"True","reason":"Accepted","message":"claimed by the test","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
+              done
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-cluster-with-destinations
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    # Simulate the PXC operator marking the cluster ready: the provider
+    # publishes metrics endpoints only for a serving cluster.
+    - name: cluster-ready
+      try:
+        - script:
+            content: |
+              GEN=$(kubectl get pxc.pxc.percona.com/pxc-bindings -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/pxc-bindings --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"pxc-bindings-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 11-assert.yaml
+        - error:
+            file: 11-errors.yaml
+
+    - name: drop-prometheus-entry
+      try:
+        - apply:
+            file: 20-drop-prometheus.yaml
+        - assert:
+            file: 20-assert.yaml
+        - error:
+            file: 20-errors.yaml
+
+    - name: delete-pmm-destination
+      try:
+        - delete:
+            ref:
+              apiVersion: monitoring.openeverest.io/v1alpha1
+              kind: MonitoringDestination
+              name: pmm-it
+        - assert:
+            file: 30-assert.yaml
+
+    - name: drop-pmm-entry
+      try:
+        - apply:
+            file: 40-drop-pmm.yaml
+        - assert:
+            file: 40-assert.yaml
+        - error:
+            file: 40-errors.yaml
+
+    - name: delete-cluster
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete instance/pxc-bindings pxc.pxc.percona.com/pxc-bindings --wait=false --ignore-not-found && sleep 5
+              kubectl -n $NAMESPACE patch pxc.pxc.percona.com/pxc-bindings -p '{"metadata":{"finalizers":null}}' --type merge || true
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            name: pxc-bindings
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            name: pxc-bindings
+            for:
+              deletion: {}

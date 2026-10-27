@@ -84,8 +84,6 @@ jobs:
 
       - name: Install CRDs
         run: make install-crds
-        env:
-          OPENEVEREST_BRANCH: ${{ env.OPENEVEREST_BRANCH }}
 
       - name: Deploy SeaweedFS for backup tests
         if: ${{ inputs.needs_seaweedfs }}

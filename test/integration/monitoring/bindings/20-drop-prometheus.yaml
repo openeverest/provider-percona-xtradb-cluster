@@ -1,7 +1,7 @@
 apiVersion: core.openeverest.io/v1alpha1
 kind: Instance
 metadata:
-  name: test-pxc-cluster
+  name: pxc-bindings
 spec:
   providerRef:
     name: percona-xtradb-cluster
@@ -12,14 +12,18 @@ spec:
       resources:
         limits:
           cpu: "1"
-          memory: 4G
-        requests:
-          cpu: 500m
-          memory: 2G
+          memory: 1G
       storage:
-        size: 25Gi
-        storageClass: standard
+        size: 10Gi
     proxy:
       type: haproxy
       replicas: 1
-    monitoring:
+  monitoring:
+    destinations:
+      - name: pmm
+        destinationRef:
+          name: pmm-it
+        parameters:
+          resources:
+            limits:
+              memory: 400Mi

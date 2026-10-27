@@ -19,9 +19,8 @@ package common
 // These are used throughout the reconciliation code to reference
 // components by name consistently.
 const (
-	ComponentEngine     = "engine"
-	ComponentProxy      = "proxy"
-	ComponentMonitoring = "monitoring"
+	ComponentEngine = "engine"
+	ComponentProxy  = "proxy"
 	ComponentBackup = "backup"
 )
 
@@ -29,9 +28,8 @@ const (
 const (
 	ProxyTypeHAProxy  = "haproxy"
 	ProxyTypeProxySQL = "proxysql"
-	MonitoringTypePMM = "pmm"
 )
 
-// ComponentTypeMySQLDExporter is the catalog entry for the Prometheus
-// integration's sidecar; it has no component of its own.
+// ComponentTypeMySQLDExporter is the catalog entry for the metrics exporter
+// sidecar; it has no component of its own.
 const ComponentTypeMySQLDExporter = "mysqld-exporter"

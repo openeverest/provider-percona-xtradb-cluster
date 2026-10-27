@@ -15,7 +15,6 @@
 package provider
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -30,7 +29,6 @@ import (
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,7 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -375,10 +372,6 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 
-	if err := applyMonitoringSettings(c, pxc, spec); err != nil {
-		return err
-	}
-
 	if err := applyBackupSettings(c, pxc); err != nil {
 		return err
 	}
@@ -387,14 +380,9 @@ func SyncPXC(c *controller.Context) error {
 
 	pxc.Spec.SecretsName = usersSecretName
 
-	monitoringParams, err := monitoringParametersFromInstance(c)
-	if err != nil {
+	if err := applyMonitoring(c, pxc, spec); err != nil {
 		return err
 	}
-	if err := applyPrometheusExporter(pxc, monitoringParams, spec); err != nil {
-		return err
-	}
-	applyCorootAnnotations(pxc, monitoringParams)
 
 	// When seeding from a DataSource, the target cluster's users secret must
 	// contain the same credentials as the source cluster: the restored datadir
@@ -409,10 +397,6 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	if err := c.Apply(pxc); err != nil {
-		return err
-	}
-
-	if err := syncPodMonitor(c, pxc, monitoringParams); err != nil {
 		return err
 	}
 
@@ -620,22 +604,11 @@ func CleanupPXC(c *controller.Context) error {
 // PXCProvider implements the ProviderInterface.
 type PXCProvider struct {
 	controller.BaseProvider
-	client client.Client
-}
-
-// SetClient injects the Kubernetes client into the provider.
-// Must be called after reconciler.New() and before r.Start().
-// TODO: this is not great, change the way manager is configured
-// so injection is not necessary.
-func (p *PXCProvider) SetClient(c client.Client) {
-	p.client = c
 }
 
 // NewPXCProviderInterface creates a new PXC provider.
 // The provider name must match the Provider CR name so the runtime
 // can automatically fetch schemas and version metadata from it.
-// Call SetClient on the returned provider before starting the reconciler
-// so the MonitoringConfig watch handler can list referencing Instances.
 func NewPXCProviderInterface() *PXCProvider {
 	p := &PXCProvider{}
 
@@ -643,45 +616,13 @@ func NewPXCProviderInterface() *PXCProvider {
 		ProviderName: "percona-xtradb-cluster",
 		SchemeFuncs: []func(*runtime.Scheme) error{
 			pxcv1.SchemeBuilder.AddToScheme,
+			// Sync lists MonitoringBindings and the conformance harness's scheme has only these.
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
-			monitoringv1.AddToScheme,
 			backupv1alpha1.SchemeBuilder.AddToScheme,
 		},
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes
 			controller.WatchOwned(&pxcv1.PerconaXtraDBCluster{}),
-			controller.WatchExternal(
-				&monitoringv1alpha1.MonitoringConfig{},
-				handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-					if p.client == nil {
-						return nil
-					}
-
-					mc, ok := obj.(*monitoringv1alpha1.MonitoringConfig)
-					if !ok {
-						return nil
-					}
-
-					instances := &corev1alpha1.InstanceList{}
-					if err := p.client.List(ctx, instances,
-						client.InNamespace(mc.Namespace),
-						client.MatchingFields{monitoringConfigRefFieldPath: mc.Name},
-					); err != nil {
-						return nil
-					}
-
-					requests := make([]reconcile.Request, 0, len(instances.Items))
-					for i := range instances.Items {
-						instance := instances.Items[i]
-						if instance.Spec.ProviderRef.Name != p.Name() {
-							continue
-						}
-						requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&instance)})
-					}
-					return requests
-				}),
-				controller.ResourceVersionChangedPredicate,
-			),
 			// Watch operator backups so the PITR window published by
 			// BackupStorageStatuses refreshes as the operator stamps
 			// latestRestorableTime and the PITRReady condition on them.
@@ -721,35 +662,6 @@ func (p *PXCProvider) Status(c *controller.Context) (controller.Status, error) {
 // Cleanup handles deletion of the cluster and any necessary cleanup.
 func (p *PXCProvider) Cleanup(c *controller.Context) error {
 	return CleanupPXC(c)
-}
-
-// FieldIndexes implements controller.FieldIndexProvider.
-// It registers indexes used by watchers.
-func (p *PXCProvider) FieldIndexes() []controller.FieldIndex {
-	return []controller.FieldIndex{
-		{
-			Object:    &corev1alpha1.Instance{},
-			FieldPath: monitoringConfigRefFieldPath,
-			Extractor: func(obj client.Object) []string {
-				instance, ok := obj.(*corev1alpha1.Instance)
-				if !ok {
-					return nil
-				}
-
-				monitoringComponent, ok := instance.Spec.Components[common.ComponentMonitoring]
-				if !ok {
-					return nil
-				}
-
-				monitoringConfigName, err := monitoringConfigNameFromComponent(monitoringComponent)
-				if err != nil || monitoringConfigName == "" {
-					return nil
-				}
-
-				return []string{monitoringConfigName}
-			},
-		},
-	}
 }
 
 // buildConnectionDetails reads the PXC Users secret and combines it with host info
@@ -799,7 +711,6 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 // Compile-time interface checks
 var _ controller.ProviderInterface = (*PXCProvider)(nil)
 var _ controller.WatchProvider = (*PXCProvider)(nil)
-var _ controller.FieldIndexProvider = (*PXCProvider)(nil)
 
 func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (string, error) {
 	if component.Parameters == nil || len(component.Parameters.Raw) == 0 {

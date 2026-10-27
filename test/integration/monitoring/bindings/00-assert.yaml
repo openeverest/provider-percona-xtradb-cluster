@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-percona-xtradb-cluster-operator
+  namespace: provider-system
+spec:
+  replicas: 0
+---
+# Core accepts both destinations against their claimed classes.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringDestination
+metadata:
+  name: pmm-it
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringDestination
+metadata:
+  name: prometheus-it
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"

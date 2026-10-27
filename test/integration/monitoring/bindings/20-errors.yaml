@@ -1,0 +1,7 @@
+# The prometheus binding is gone with its entry.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+    monitoring.openeverest.io/entry: prometheus

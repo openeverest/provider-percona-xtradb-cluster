@@ -1,0 +1,18 @@
+# Monitoring contract: what OpenEverest monitoring can collect from this
+# provider's Instances. `provider-sdk generate` publishes it as
+# Provider.spec.monitoring.
+#
+# integrations: operator-native integrations rendered in Sync (ProviderManaged).
+# componentTypes: keyed by a component type from provider.yaml, what each type
+# exposes to ExtensionManaged classes. pxc runs a mysqld_exporter sidecar on
+# demand; HAProxy serves its own /metrics.
+integrations:
+  pmm:
+    agentVersions: ">=3.0.0 <4.0.0"
+componentTypes:
+  pxc:
+    kind: mysql
+    metrics: Exporter
+  haproxy:
+    kind: haproxy
+    metrics: Native

@@ -1,0 +1,40 @@
+# The destination is gone: core revokes Accepted and the provider keeps the
+# live rendering and token until the entry is dropped.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+    monitoring.openeverest.io/entry: pmm
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "False"
+  (conditions[?type == 'Accepted'].reason | [0]): DestinationNotFound
+  (conditions[?type == 'Configured'].reason | [0]): Retained
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-bindings
+spec:
+  pmm:
+    enabled: true
+    serverHost: pmm-it.example.com
+    image: percona/pmm-client:3.8.0
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-pxc-bindings
+data:
+  pmmservertoken: YWJjZGVm
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+status:
+  monitoring:
+    (destinations[?name == 'pmm'] | [0]):
+      configured: "False"
+      reason: DestinationNotFound
+  (conditions[?type == 'MonitoringConfigured'].status | [0]): "False"

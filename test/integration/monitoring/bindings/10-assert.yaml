@@ -1,0 +1,97 @@
+# Core materialises one binding per entry; the pmm one resolves to
+# ProviderManaged and the provider reports it Configured.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+    monitoring.openeverest.io/entry: pmm
+  ownerReferences:
+    - apiVersion: core.openeverest.io/v1alpha1
+      kind: Instance
+      name: pxc-bindings
+spec:
+  instanceRef:
+    name: pxc-bindings
+  destinationRef:
+    name: pmm-it
+  classRef:
+    name: pmm-it
+  executionMode: ProviderManaged
+  parameters:
+    resources:
+      limits:
+        memory: 400Mi
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+  (conditions[?type == 'Configured'].status | [0]): "True"
+  (conditions[?type == 'Configured'].reason | [0]): Configured
+---
+# The prometheus entry resolves to ExtensionManaged because pxc and haproxy
+# declare metrics; its Configured condition belongs to the class controller,
+# which is not running here.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+    monitoring.openeverest.io/entry: prometheus
+spec:
+  destinationRef:
+    name: prometheus-it
+  classRef:
+    name: prometheus-it
+  executionMode: ExtensionManaged
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-bindings
+spec:
+  secretsName: everest-secrets-pxc-bindings
+  # spec.pmm comes from the binding: server from the destination URL, image
+  # from the class, limits from the entry parameters over the size tier.
+  pmm:
+    enabled: true
+    serverHost: pmm-it.example.com
+    image: percona/pmm-client:3.8.0
+    customClusterName: pxc-bindings
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 95m
+        memory: 99604Ki
+      limits:
+        memory: 400Mi
+    pxcParams: (join('', ['--custom-labels=namespace=', $namespace, ',core_openeverest_io_instance=pxc-bindings']))
+    proxysqlParams: (join('', ['--custom-labels=namespace=', $namespace, ',core_openeverest_io_instance=pxc-bindings,core_openeverest_io_component=proxy']))
+  # The exporter sidecar runs because the prometheus class requires metrics.
+  pxc:
+    sidecars:
+      - name: mysqld-exporter
+        ports:
+          - name: metrics
+            containerPort: 9104
+---
+# The destination token, mirrored where the operator reads it.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-pxc-bindings
+data:
+  pmmservertoken: YWJjZGVm
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+status:
+  monitoring:
+    (destinations[?name == 'pmm'] | [0]):
+      mode: ProviderManaged
+      configured: "True"
+      reason: Configured
+    (destinations[?name == 'prometheus'] | [0]):
+      mode: ExtensionManaged

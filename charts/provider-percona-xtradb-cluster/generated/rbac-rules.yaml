@@ -10,6 +10,12 @@
 - apiGroups:
     - ""
   resources:
+    - namespaces
+  verbs:
+    - get
+- apiGroups:
+    - ""
+  resources:
     - pods
   verbs:
     - get
@@ -110,25 +116,21 @@
     - list
     - watch
 - apiGroups:
-    - monitoring.coreos.com
+    - monitoring.openeverest.io
   resources:
-    - podmonitors
+    - monitoringbindings
+    - monitoringclasses
+    - monitoringdestinations
   verbs:
-    - create
-    - delete
     - get
     - list
-    - patch
-    - update
     - watch
 - apiGroups:
     - monitoring.openeverest.io
   resources:
-    - monitoringconfigs
+    - monitoringbindings/status
   verbs:
-    - get
-    - list
-    - watch
+    - patch
 - apiGroups:
     - pxc.percona.com
   resources:

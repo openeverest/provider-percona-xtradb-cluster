@@ -1,0 +1,14 @@
+# The binding goes with its entry.
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+---
+# The token mirror goes with PMM.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-pxc-bindings
+data:
+  pmmservertoken: YWJjZGVm

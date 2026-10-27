@@ -1,0 +1,32 @@
+# Once the cluster serves, the provider publishes where the exporter and
+# HAProxy listen; the runtime stamps the identity labels.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+status:
+  phase: Ready
+  monitoring:
+    sources:
+      identity:
+        labels:
+          openeverest_instance: pxc-bindings
+          openeverest_namespace: ($namespace)
+          openeverest_provider: percona-xtradb-cluster
+      (length(metrics)): 2
+      (metrics[?component == 'engine'] | [0]):
+        kind: mysql
+        podSelector:
+          core.openeverest.io/instance: pxc-bindings
+          core.openeverest.io/component: engine
+        port: metrics
+        path: /metrics
+        scheme: http
+      (metrics[?component == 'proxy'] | [0]):
+        kind: haproxy
+        podSelector:
+          core.openeverest.io/instance: pxc-bindings
+          core.openeverest.io/component: proxy
+        port: 8404
+        path: /metrics
+        scheme: http
