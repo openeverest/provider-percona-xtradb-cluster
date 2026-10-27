@@ -13,8 +13,7 @@ RELEASE_FULLCOMMIT ?= $(shell git rev-parse HEAD)
 CONTAINER_TOOL ?= docker
 
 # OpenEverest branch the integration environment builds the controller from.
-# Flips to main once the monitoring changes merge.
-OPENEVEREST_BRANCH ?= monitoring/02-controllers
+OPENEVEREST_BRANCH ?= main
 
 # Image URL to use all building/pushing image targets
 IMG ?= ghcr.io/openeverest/provider-percona-xtradb-cluster-dev:latest

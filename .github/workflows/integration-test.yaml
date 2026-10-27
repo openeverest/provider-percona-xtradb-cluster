@@ -30,9 +30,8 @@ permissions:
 
 env:
   IMG: provider-percona-xtradb-cluster:ci
-  # Core controller under test; the monitoring binding controllers live in
-  # monitoring/02-controllers. Flips to main once the monitoring changes merge.
-  OPENEVEREST_BRANCH: monitoring/02-controllers
+  # Branch of openeverest/openeverest to build the core controller under test from.
+  OPENEVEREST_BRANCH: main
 
 jobs:
   run:
