@@ -16,6 +16,7 @@ package provider
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -34,12 +35,6 @@ const pmmIntegration = "pmm"
 
 // haproxyMetricsPort is where the operator's HAProxy serves /metrics.
 const haproxyMetricsPort = 8404
-
-// pmmDestinationParameters is the part of a pmm MonitoringDestination's
-// parameters the provider reads.
-type pmmDestinationParameters struct {
-	URL string `json:"url"`
-}
 
 // pmmEntryParameters is the shape of a pmm entry's parameters in
 // Instance.spec.monitoring.destinations[].
@@ -139,18 +134,22 @@ func applyPMM(c *controller.Context, pxc, live *pxcv1.PerconaXtraDBCluster, requ
 		if !rb.Apply || rb.Integration() != pmmIntegration {
 			continue
 		}
-		credentials, err := pmmCredentials(c, rb.Destination)
+		pmm, token, err := renderPMM(c, rb)
 		if err != nil {
-			return err
-		}
-		pmm, token, err := renderPMM(c, rb, credentials)
-		if err != nil {
+			if errors.As(err, new(apierrors.APIStatus)) && !apierrors.IsNotFound(err) {
+				return err
+			}
 			c.SetMonitoringBindingResult(rb.Binding.Name, monitoringv1alpha1.ReasonRenderFailed, err.Error())
 			keepLivePMM(pxc, live)
 			return nil
 		}
 		pxc.Spec.PMM = pmm
-		return syncPMMServerToken(c, pxc.Spec.SecretsName, token)
+		if err := syncPMMServerToken(c, pxc.Spec.SecretsName, token); err != nil {
+			return err
+		}
+		c.SetMonitoringBindingResult(rb.Binding.Name, monitoringv1alpha1.ReasonAgentTLSNotVerified,
+			"pmm-client does not verify the PMM server certificate, whatever spec.tls says: the Percona operator always runs it with PMM_AGENT_SERVER_INSECURE_TLS=1")
+		return nil
 	}
 	keepLivePMM(pxc, live)
 	return nil
@@ -163,34 +162,13 @@ func keepLivePMM(pxc, live *pxcv1.PerconaXtraDBCluster) {
 	}
 }
 
-// pmmCredentials returns the destination's credentials Secret, nil when the
-// destination names none or the Secret does not exist.
-func pmmCredentials(c *controller.Context, destination *monitoringv1alpha1.MonitoringDestination) (*corev1.Secret, error) {
-	if destination.Spec.CredentialsSecretRef == nil {
-		return nil, nil
-	}
-	secret := &corev1.Secret{}
-	if err := c.Get(secret, destination.Spec.CredentialsSecretRef.Name); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get credentials Secret of MonitoringDestination %s: %w", destination.Name, err)
-	}
-	return secret, nil
-}
-
 // renderPMM builds spec.pmm for an Apply-able pmm binding and returns the PMM
-// server token to mirror. Errors describe an input the user has to fix.
-func renderPMM(c *controller.Context, rb controller.ResolvedBinding, credentials *corev1.Secret) (*pxcv1.PMMSpec, []byte, error) {
-	destination := pmmDestinationParameters{}
-	if rb.Destination.Spec.Parameters != nil {
-		if err := json.Unmarshal(rb.Destination.Spec.Parameters.Raw, &destination); err != nil {
-			return nil, nil, fmt.Errorf("decode MonitoringDestination %s parameters: %w", rb.Destination.Name, err)
-		}
-	}
-	serverHost, err := pmmServerHostFromURL(destination.URL)
+// server token to mirror. Errors other than API errors describe an input the
+// user has to fix.
+func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMMSpec, []byte, error) {
+	serverHost, err := pmmServerHostFromURL(rb.Destination.Spec.URL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("MonitoringDestination %s parameters.url: %w", rb.Destination.Name, err)
+		return nil, nil, fmt.Errorf("MonitoringDestination %s spec.url: %w", rb.Destination.Name, err)
 	}
 
 	entry := pmmEntryParameters{}
@@ -205,16 +183,13 @@ func renderPMM(c *controller.Context, rb controller.ResolvedBinding, credentials
 		return nil, nil, fmt.Errorf("parameters of destination entry %s: %w", rb.Entry.Name, err)
 	}
 
-	if rb.Destination.Spec.CredentialsSecretRef == nil {
-		return nil, nil, fmt.Errorf("MonitoringDestination %s has no credentialsSecretRef", rb.Destination.Name)
+	mode, credentials, err := c.MonitoringCredentials(rb)
+	if err != nil {
+		return nil, nil, err
 	}
-	if credentials == nil {
-		return nil, nil, fmt.Errorf("credentials Secret %s of MonitoringDestination %s not found",
-			rb.Destination.Spec.CredentialsSecretRef.Name, rb.Destination.Name)
-	}
-	token := credentials.Data[pmmAPIKeyKey]
+	token := credentials[pmmTokenKey]
 	if len(token) == 0 {
-		return nil, nil, fmt.Errorf("credentials Secret %s has no %s", credentials.Name, pmmAPIKeyKey)
+		return nil, nil, fmt.Errorf("authentication mode %s of MonitoringDestination %s provides no %s", mode, rb.Destination.Name, pmmTokenKey)
 	}
 
 	return &pxcv1.PMMSpec{

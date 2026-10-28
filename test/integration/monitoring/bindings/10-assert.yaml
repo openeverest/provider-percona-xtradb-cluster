@@ -1,5 +1,6 @@
 # Core materialises one binding per entry; the pmm one resolves to
-# ProviderManaged and the provider reports it Configured.
+# ProviderManaged and the provider reports it Configured, with an agent that
+# does not verify the PMM server certificate.
 apiVersion: monitoring.openeverest.io/v1alpha1
 kind: MonitoringBinding
 metadata:
@@ -25,7 +26,7 @@ spec:
 status:
   (conditions[?type == 'Accepted'].status | [0]): "True"
   (conditions[?type == 'Configured'].status | [0]): "True"
-  (conditions[?type == 'Configured'].reason | [0]): Configured
+  (conditions[?type == 'Configured'].reason | [0]): AgentTLSNotVerified
 ---
 # The prometheus entry resolves to ExtensionManaged because pxc and haproxy
 # declare metrics; its Configured condition belongs to the class controller,
@@ -92,6 +93,6 @@ status:
     (destinations[?name == 'pmm'] | [0]):
       mode: ProviderManaged
       configured: "True"
-      reason: Configured
+      reason: AgentTLSNotVerified
     (destinations[?name == 'prometheus'] | [0]):
       mode: ExtensionManaged
