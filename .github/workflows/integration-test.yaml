@@ -30,7 +30,7 @@ permissions:
 
 env:
   IMG: provider-percona-xtradb-cluster:ci
-  OPENEVEREST_BRANCH: monitoring/auth-tls-url
+  OPENEVEREST_BRANCH: main
 
 jobs:
   run:

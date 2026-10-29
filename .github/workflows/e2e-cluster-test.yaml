@@ -22,7 +22,7 @@ permissions:
 env:
   IMG: provider-percona-xtradb-cluster:ci
   # Branch of openeverest/openeverest to build the platform from.
-  OPENEVEREST_BRANCH: monitoring/auth-tls-url
+  OPENEVEREST_BRANCH: main
 
 jobs:
   run:
