@@ -210,12 +210,16 @@ An Instance sends monitoring data to the `MonitoringDestination`s listed in
 monitoring extension.
 
 - **PMM** (`pmm` class): the provider renders the operator's `spec.pmm` from the
-  destination (server `url`, PMM 3 service account token under `apiKey` in its credentials
-  Secret) and the agent image of the class. The entry's `parameters.resources` override the
-  PMM client requests sized from the engine memory. Metrics in PMM carry `namespace` and
+  destination (server `parameters.url`, PMM 3 service account token under `token` in the
+  credentials Secret of its `ServiceAccountToken` authentication mode) and the agent image
+  of the class. The entry's `parameters.resources` override the PMM client requests sized
+  from the engine memory. Metrics in PMM carry `namespace` and
   `core_openeverest_io_instance` labels, plus `core_openeverest_io_component=proxy` on
   ProxySQL; HAProxy metrics are not labelled: the operator does not let the provider set
-  their `pmm-admin` flags.
+  their `pmm-admin` flags. The operator runs the PMM client with
+  `PMM_AGENT_SERVER_INSECURE_TLS=1`, so it never verifies the PMM server certificate,
+  whatever the destination's `spec.tls` says; the binding reports this as Configured with
+  reason `AgentTLSNotVerified`.
 - **Classes that scrape metrics** (Prometheus, VictoriaMetrics, …): while one is bound the
   provider runs a `mysqld_exporter` sidecar on the MySQL pods (adding or removing it restarts
   them one at a time); it connects as the operator's `monitor` user. Once the cluster is

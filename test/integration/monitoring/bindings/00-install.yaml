@@ -16,9 +16,11 @@ spec:
       properties:
         url:
           type: string
-          pattern: '^https?://.+'
-        verifyTLS:
-          type: boolean
+          pattern: '^https?://[^/?#@]+([/?#].*)?$'
+  authModes:
+    - name: ServiceAccountToken
+      credentials:
+        required: [token]
   instanceParametersSchema:
     openAPIV3Schema:
       type: object
@@ -34,8 +36,6 @@ spec:
               type: object
               additionalProperties:
                 type: string
-  credentialsSchema:
-    required: [apiKey]
 ---
 # The prometheus class as the monitoring-prometheus chart ships it.
 apiVersion: monitoring.openeverest.io/v1alpha1
@@ -46,6 +46,8 @@ spec:
   extensionManaged:
     requires:
       metrics: true
+  authModes:
+    - name: Anonymous
   destinationParametersSchema:
     openAPIV3Schema:
       type: object
@@ -61,7 +63,7 @@ metadata:
   name: pmm-it-token
 type: Opaque
 data:
-  apiKey: YWJjZGVm
+  token: YWJjZGVm
 ---
 apiVersion: monitoring.openeverest.io/v1alpha1
 kind: MonitoringDestination
@@ -70,11 +72,12 @@ metadata:
 spec:
   classRef:
     name: pmm-it
-  credentialsSecretRef:
-    name: pmm-it-token
   parameters:
     url: http://pmm-it.example.com
-    verifyTLS: false
+  authentication:
+    mode: ServiceAccountToken
+    credentialsSecretRef:
+      name: pmm-it-token
 ---
 apiVersion: monitoring.openeverest.io/v1alpha1
 kind: MonitoringDestination

@@ -31,9 +31,9 @@ import (
 )
 
 const (
-	// pmmAPIKeyKey is the key of the PMM server token in the destination's
+	// pmmTokenKey is the key of the PMM server token in the destination's
 	// credentials Secret.
-	pmmAPIKeyKey = "apiKey"
+	pmmTokenKey = "token"
 	// pmmServerTokenKey is where the operator reads the PMM 3 server token
 	// in the users Secret.
 	pmmServerTokenKey = "pmmservertoken"

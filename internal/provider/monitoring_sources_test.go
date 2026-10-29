@@ -57,7 +57,10 @@ var monTestProviderSpec = corev1alpha1.ProviderSpec{
 		},
 	},
 	Monitoring: &corev1alpha1.ProviderMonitoring{
-		Integrations: map[string]corev1alpha1.MonitoringIntegration{pmmIntegration: {AgentVersions: ">=3.0.0 <4.0.0"}},
+		Integrations: map[string]corev1alpha1.MonitoringIntegration{pmmIntegration: {
+			AgentVersions: ">=3.0.0 <4.0.0",
+			AuthModes:     []string{"ServiceAccountToken"},
+		}},
 	},
 }
 
@@ -170,6 +173,10 @@ func monPMMClass() *monitoringv1alpha1.MonitoringClass {
 				AgentImage:   monTestPMMImage,
 				AgentVersion: "3.8.0",
 			},
+			AuthModes: []commonv1alpha1.AuthMode{{
+				Name:        "ServiceAccountToken",
+				Credentials: &commonv1alpha1.CredentialKeys{Required: []string{pmmTokenKey}},
+			}},
 		},
 	}
 }
@@ -181,26 +188,38 @@ func monPrometheusClass() *monitoringv1alpha1.MonitoringClass {
 			ExtensionManaged: &monitoringv1alpha1.ExtensionManagedFulfilment{
 				Requires: monitoringv1alpha1.SourceRequirements{Metrics: true},
 			},
+			AuthModes: []commonv1alpha1.AuthMode{{Name: commonv1alpha1.AuthModeAnonymous}},
 		},
 	}
 }
 
-func monDestination(name, class, parameters, credentialsSecret string) *monitoringv1alpha1.MonitoringDestination {
-	d := &monitoringv1alpha1.MonitoringDestination{
+func monDestination(name, class, url string, authentication commonv1alpha1.Authentication) *monitoringv1alpha1.MonitoringDestination {
+	dst := &monitoringv1alpha1.MonitoringDestination{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: monTestNamespace},
-		Spec:       monitoringv1alpha1.MonitoringDestinationSpec{ClassRef: commonv1alpha1.ObjectRef{Name: class}},
+		Spec: monitoringv1alpha1.MonitoringDestinationSpec{
+			ClassRef:       commonv1alpha1.ObjectRef{Name: class},
+			Authentication: authentication,
+		},
 	}
-	if parameters != "" {
-		d.Spec.Parameters = &runtime.RawExtension{Raw: []byte(parameters)}
+	if url != "" {
+		dst.Spec.Parameters = &runtime.RawExtension{Raw: []byte(`{"url":"` + url + `"}`)}
 	}
-	if credentialsSecret != "" {
-		d.Spec.CredentialsSecretRef = &commonv1alpha1.SecretRef{Name: credentialsSecret}
+	return dst
+}
+
+func monPrometheusDestination() *monitoringv1alpha1.MonitoringDestination {
+	return monDestination("prometheus", "prometheus", "", commonv1alpha1.Authentication{Mode: commonv1alpha1.AuthModeAnonymous})
+}
+
+func monPMMAuthentication() commonv1alpha1.Authentication {
+	return commonv1alpha1.Authentication{
+		Mode:                 "ServiceAccountToken",
+		CredentialsSecretRef: &commonv1alpha1.SecretRef{Name: "pmm-prod-credentials"},
 	}
-	return d
 }
 
 func monPMMDestination() *monitoringv1alpha1.MonitoringDestination {
-	return monDestination("pmm-prod", "pmm", `{"url":"https://pmm.example.com:8443/graph"}`, "pmm-prod-credentials")
+	return monDestination("pmm-prod", "pmm", "https://pmm.example.com:8443/graph", monPMMAuthentication())
 }
 
 func monSecret(name string, data map[string]string) *corev1.Secret {
@@ -215,7 +234,7 @@ func monSecret(name string, data map[string]string) *corev1.Secret {
 }
 
 func monPMMCredentials() *corev1.Secret {
-	return monSecret("pmm-prod-credentials", map[string]string{pmmAPIKeyKey: "glsa_token"})
+	return monSecret("pmm-prod-credentials", map[string]string{pmmTokenKey: "glsa_token"})
 }
 
 // monLivePXC is the engine CR as the operator currently holds it, with every
@@ -369,7 +388,7 @@ func TestMetricsExporterFollowsRequiredSources(t *testing.T) {
 		{
 			name:    "a bound class requires metrics",
 			entries: prometheusEntry,
-			objs:    []client.Object{monPrometheusBinding(), monDestination("prometheus", "prometheus", "", ""), monPrometheusClass()},
+			objs:    []client.Object{monPrometheusBinding(), monPrometheusDestination(), monPrometheusClass()},
 			want:    true,
 		},
 		{
@@ -415,7 +434,7 @@ func TestMetricsExporterSidecar(t *testing.T) {
 	t.Parallel()
 
 	c := monitoringContext(t, []corev1alpha1.InstanceMonitoringDestination{monEntry("prometheus", "prometheus")},
-		monPrometheusBinding(), monDestination("prometheus", "prometheus", "", ""), monPrometheusClass())
+		monPrometheusBinding(), monPrometheusDestination(), monPrometheusClass())
 	pxc := monDesiredPXC()
 
 	require.NoError(t, applyMonitoring(c, pxc, &monTestProviderSpec))
@@ -460,6 +479,7 @@ func TestPMMFollowsRequiredSources(t *testing.T) {
 			wantHost:   "pmm.example.com:8443",
 			wantToken:  "glsa_token",
 			wantMirror: true,
+			wantResult: monitoringv1alpha1.ReasonAgentTLSNotVerified,
 		},
 		{
 			name:    "a binding that is not Accepted keeps the live spec.pmm",
@@ -533,12 +553,13 @@ func TestPMMFollowsRequiredSources(t *testing.T) {
 			wantHost:   "pmm.example.com:8443",
 			wantToken:  "glsa_token",
 			wantMirror: true,
+			wantResult: monitoringv1alpha1.ReasonAgentTLSNotVerified,
 		},
 		{
 			name:    "a binding that cannot be rendered enables nothing before the cluster exists",
 			entries: pmmEntry,
 			objs: []client.Object{
-				monPMMBinding(true, ""), monDestination("pmm-prod", "pmm", `{}`, "pmm-prod-credentials"), monPMMClass(), monPMMCredentials(),
+				monPMMBinding(true, ""), monDestination("pmm-prod", "pmm", "", monPMMAuthentication()), monPMMClass(), monPMMCredentials(),
 				monSecret(monTestUsersSecret, nil),
 			},
 			wantNoPMM:  true,
@@ -608,6 +629,11 @@ func TestPMMRender(t *testing.T) {
 	require.NoError(t, c.Get(users, monTestUsersSecret))
 	assert.Equal(t, "glsa_token", string(users.Data[pmmServerTokenKey]))
 	assert.Equal(t, "pw", string(users.Data["root"]), "the operator's users are left alone")
+
+	reason, message, staged := c.MonitoringBindingResult(monBindingName("pmm"))
+	require.True(t, staged)
+	assert.Equal(t, monitoringv1alpha1.ReasonAgentTLSNotVerified, reason)
+	assert.Contains(t, message, "PMM_AGENT_SERVER_INSECURE_TLS=1")
 }
 
 func TestPMMRenderFailed(t *testing.T) {
@@ -621,44 +647,54 @@ func TestPMMRenderFailed(t *testing.T) {
 		wantMessage string
 	}{
 		{
-			name:        "destination parameters that do not decode",
-			binding:     monPMMBinding(true, ""),
-			destination: monDestination("pmm-prod", "pmm", `{"url":443}`, "pmm-prod-credentials"),
+			name:    "undecodable destination parameters",
+			binding: monPMMBinding(true, ""),
+			destination: func() *monitoringv1alpha1.MonitoringDestination {
+				d := monDestination("pmm-prod", "pmm", "", monPMMAuthentication())
+				d.Spec.Parameters = &runtime.RawExtension{Raw: []byte(`{"url":443}`)}
+				return d
+			}(),
 			credentials: monPMMCredentials(),
 			wantMessage: "decode MonitoringDestination pmm-prod parameters",
 		},
 		{
 			name:        "destination without url",
 			binding:     monPMMBinding(true, ""),
-			destination: monDestination("pmm-prod", "pmm", `{}`, "pmm-prod-credentials"),
+			destination: monDestination("pmm-prod", "pmm", "", monPMMAuthentication()),
 			credentials: monPMMCredentials(),
 			wantMessage: "MonitoringDestination pmm-prod parameters.url: url is empty",
 		},
 		{
 			name:        "destination url without host",
 			binding:     monPMMBinding(true, ""),
-			destination: monDestination("pmm-prod", "pmm", `{"url":"https://"}`, "pmm-prod-credentials"),
+			destination: monDestination("pmm-prod", "pmm", "https://", monPMMAuthentication()),
 			credentials: monPMMCredentials(),
 			wantMessage: "MonitoringDestination pmm-prod parameters.url: missing host",
 		},
 		{
-			name:        "destination without credentials",
+			name:        "destination authentication mode the class does not list",
 			binding:     monPMMBinding(true, ""),
-			destination: monDestination("pmm-prod", "pmm", `{"url":"https://pmm.example.com"}`, ""),
-			wantMessage: "MonitoringDestination pmm-prod has no credentialsSecretRef",
+			destination: monDestination("pmm-prod", "pmm", "https://pmm.example.com", commonv1alpha1.Authentication{Mode: commonv1alpha1.AuthModeAnonymous}),
+			wantMessage: `MonitoringClass "pmm" has no authentication mode "Anonymous"`,
+		},
+		{
+			name:        "destination without credentials Secret",
+			binding:     monPMMBinding(true, ""),
+			destination: monDestination("pmm-prod", "pmm", "https://pmm.example.com", commonv1alpha1.Authentication{Mode: "ServiceAccountToken"}),
+			wantMessage: "authentication mode ServiceAccountToken of MonitoringDestination pmm-prod provides no token",
 		},
 		{
 			name:        "missing credentials Secret",
 			binding:     monPMMBinding(true, ""),
 			destination: monPMMDestination(),
-			wantMessage: "credentials Secret pmm-prod-credentials of MonitoringDestination pmm-prod not found",
+			wantMessage: `get credentials Secret "pmm-prod-credentials" of MonitoringDestination "pmm-prod": secrets "pmm-prod-credentials" not found`,
 		},
 		{
-			name:        "credentials Secret without apiKey",
+			name:        "credentials Secret without token",
 			binding:     monPMMBinding(true, ""),
 			destination: monPMMDestination(),
-			credentials: monSecret("pmm-prod-credentials", map[string]string{"token": "x"}),
-			wantMessage: "credentials Secret pmm-prod-credentials has no apiKey",
+			credentials: monSecret("pmm-prod-credentials", map[string]string{"apiKey": "x"}),
+			wantMessage: `missing key "token" required by authentication mode "ServiceAccountToken"`,
 		},
 		{
 			name:        "entry resources that do not decode",
