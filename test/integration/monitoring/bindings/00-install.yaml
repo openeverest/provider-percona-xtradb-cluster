@@ -86,8 +86,6 @@ metadata:
 spec:
   classRef:
     name: prometheus-it
-  authentication:
-    mode: Anonymous
   parameters:
     podMonitorLabels:
       release: kps
