@@ -173,7 +173,6 @@ func monPMMClass() *monitoringv1alpha1.MonitoringClass {
 				AgentImage:   monTestPMMImage,
 				AgentVersion: "3.8.0",
 			},
-			URLPolicy: monitoringv1alpha1.URLPolicyRequired,
 			AuthModes: []commonv1alpha1.AuthMode{{
 				Name:        "ServiceAccountToken",
 				Credentials: &commonv1alpha1.CredentialKeys{Required: []string{pmmTokenKey}},
@@ -195,14 +194,17 @@ func monPrometheusClass() *monitoringv1alpha1.MonitoringClass {
 }
 
 func monDestination(name, class, url string, authentication commonv1alpha1.Authentication) *monitoringv1alpha1.MonitoringDestination {
-	return &monitoringv1alpha1.MonitoringDestination{
+	dst := &monitoringv1alpha1.MonitoringDestination{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: monTestNamespace},
 		Spec: monitoringv1alpha1.MonitoringDestinationSpec{
 			ClassRef:       commonv1alpha1.ObjectRef{Name: class},
-			URL:            url,
 			Authentication: authentication,
 		},
 	}
+	if url != "" {
+		dst.Spec.Parameters = &runtime.RawExtension{Raw: []byte(`{"url":"` + url + `"}`)}
+	}
+	return dst
 }
 
 func monPrometheusDestination() *monitoringv1alpha1.MonitoringDestination {
@@ -645,18 +647,29 @@ func TestPMMRenderFailed(t *testing.T) {
 		wantMessage string
 	}{
 		{
+			name:    "undecodable destination parameters",
+			binding: monPMMBinding(true, ""),
+			destination: func() *monitoringv1alpha1.MonitoringDestination {
+				d := monDestination("pmm-prod", "pmm", "", monPMMAuthentication())
+				d.Spec.Parameters = &runtime.RawExtension{Raw: []byte(`{"url":443}`)}
+				return d
+			}(),
+			credentials: monPMMCredentials(),
+			wantMessage: "decode MonitoringDestination pmm-prod parameters",
+		},
+		{
 			name:        "destination without url",
 			binding:     monPMMBinding(true, ""),
 			destination: monDestination("pmm-prod", "pmm", "", monPMMAuthentication()),
 			credentials: monPMMCredentials(),
-			wantMessage: "MonitoringDestination pmm-prod spec.url: url is empty",
+			wantMessage: "MonitoringDestination pmm-prod parameters.url: url is empty",
 		},
 		{
 			name:        "destination url without host",
 			binding:     monPMMBinding(true, ""),
 			destination: monDestination("pmm-prod", "pmm", "https://", monPMMAuthentication()),
 			credentials: monPMMCredentials(),
-			wantMessage: "MonitoringDestination pmm-prod spec.url: missing host",
+			wantMessage: "MonitoringDestination pmm-prod parameters.url: missing host",
 		},
 		{
 			name:        "destination authentication mode the class does not list",

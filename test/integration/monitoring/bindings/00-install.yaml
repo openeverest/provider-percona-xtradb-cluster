@@ -9,7 +9,14 @@ spec:
     integration: pmm
     agentImage: percona/pmm-client:3.8.0
     agentVersion: 3.8.0
-  urlPolicy: Required
+  destinationParametersSchema:
+    openAPIV3Schema:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          pattern: '^https?://[^/?#@]+([/?#].*)?$'
   authModes:
     - name: ServiceAccountToken
       credentials:
@@ -65,7 +72,8 @@ metadata:
 spec:
   classRef:
     name: pmm-it
-  url: http://pmm-it.example.com
+  parameters:
+    url: http://pmm-it.example.com
   authentication:
     mode: ServiceAccountToken
     credentialsSecretRef:

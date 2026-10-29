@@ -210,7 +210,7 @@ An Instance sends monitoring data to the `MonitoringDestination`s listed in
 monitoring extension.
 
 - **PMM** (`pmm` class): the provider renders the operator's `spec.pmm` from the
-  destination (server `spec.url`, PMM 3 service account token under `token` in the
+  destination (server `parameters.url`, PMM 3 service account token under `token` in the
   credentials Secret of its `ServiceAccountToken` authentication mode) and the agent image
   of the class. The entry's `parameters.resources` override the PMM client requests sized
   from the engine memory. Metrics in PMM carry `namespace` and

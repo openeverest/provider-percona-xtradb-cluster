@@ -36,6 +36,12 @@ const pmmIntegration = "pmm"
 // haproxyMetricsPort is where the operator's HAProxy serves /metrics.
 const haproxyMetricsPort = 8404
 
+// pmmDestinationParameters is the part of a pmm MonitoringDestination's
+// parameters the provider reads.
+type pmmDestinationParameters struct {
+	URL string `json:"url"`
+}
+
 // pmmEntryParameters is the shape of a pmm entry's parameters in
 // Instance.spec.monitoring.destinations[].
 type pmmEntryParameters struct {
@@ -166,9 +172,15 @@ func keepLivePMM(pxc, live *pxcv1.PerconaXtraDBCluster) {
 // server token to mirror. Errors other than API errors describe an input the
 // user has to fix.
 func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMMSpec, []byte, error) {
-	serverHost, err := pmmServerHostFromURL(rb.Destination.Spec.URL)
+	destination := pmmDestinationParameters{}
+	if rb.Destination.Spec.Parameters != nil {
+		if err := json.Unmarshal(rb.Destination.Spec.Parameters.Raw, &destination); err != nil {
+			return nil, nil, fmt.Errorf("decode MonitoringDestination %s parameters: %w", rb.Destination.Name, err)
+		}
+	}
+	serverHost, err := pmmServerHostFromURL(destination.URL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("MonitoringDestination %s spec.url: %w", rb.Destination.Name, err)
+		return nil, nil, fmt.Errorf("MonitoringDestination %s parameters.url: %w", rb.Destination.Name, err)
 	}
 
 	entry := pmmEntryParameters{}
