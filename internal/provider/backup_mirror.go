@@ -192,28 +192,26 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 		if err != nil {
 			return &controller.BackupConfigError{Reason: "StorageNotFound", Message: err.Error()}
 		}
-		if bs.Spec.Type != backupv1alpha1.BackupStorageTypeS3 || bs.Spec.S3 == nil {
-			return &controller.BackupConfigError{Reason: "StorageTypeUnsupported", Message: fmt.Sprintf("BackupStorage %q must use type s3", bs.Name)}
+		s3, _, err := c.BackupStorageS3(bs)
+		if err != nil {
+			return &controller.BackupConfigError{Reason: "StorageConfigInvalid", Message: err.Error()}
 		}
 
-		_, _, credErr := c.BackupStorageCredentials(bs)
-		if credErr != nil {
-			return &controller.BackupConfigError{Reason: "StorageCredentialsError", Message: credErr.Error()}
-		}
-
-		bucket := resolveBackupBucket(bs.Spec.S3.Bucket, string(c.Instance().UID))
+		bucket := resolveBackupBucket(bs.Spec.Location.Bucket, string(c.Instance().UID))
 
 		opStorage := &pxcv1.BackupStorageSpec{
 			Type: pxcv1.BackupStorageS3,
 			S3: &pxcv1.BackupStorageS3Spec{
 				Bucket:            bucket,
-				CredentialsSecret: bs.Spec.S3.CredentialsSecretRef.Name,
-				Region:            bs.Spec.S3.Region,
-				EndpointURL:       bs.Spec.S3.EndpointURL,
+				CredentialsSecret: bs.Spec.Authentication.CredentialsSecretRef.Name,
+				Region:            s3.Region,
+				EndpointURL:       s3.EndpointURL,
 			},
-			VerifyTLS: bs.Spec.S3.VerifyTLS,
 		}
-		if bs.Spec.S3.ForcePathStyle != nil && *bs.Spec.S3.ForcePathStyle {
+		if bs.Spec.TLS != nil && bs.Spec.TLS.InsecureSkipVerify {
+			opStorage.VerifyTLS = ptrTo(false)
+		}
+		if s3.ForcePathStyle {
 			opStorage.ContainerOptions = &pxcv1.BackupContainerOptions{
 				Env: []corev1.EnvVar{{
 					Name:  "AWS_FORCE_PATH_STYLE",
