@@ -2,6 +2,8 @@ apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupStorage
 metadata:
   name: seaweedfs-storage
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
 ---
 apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupClass
@@ -10,6 +12,10 @@ metadata:
 spec:
   displayName: Percona Backup for MySQL based on Percona XtraDB Cluster
   executionMode: ProviderManaged
+  backupStorageClasses:
+    - name: s3
+      authModes:
+        - AccessKey
   supportedProviders:
     - percona-xtradb-cluster
   providerManaged:

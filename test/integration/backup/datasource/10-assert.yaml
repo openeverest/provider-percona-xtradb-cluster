@@ -39,6 +39,9 @@ spec:
       test-storage-s3:
         type: s3
         s3:
+          (starts_with(bucket, 'test-backup-bucket/backups/')): true
+          (contains(bucket, '/src-pxc-cluster/')): true
+          (ends_with(bucket, '/test-storage-s3')): true
           region: us-east-1
           endpointUrl: http://fake
           credentialsSecret: backup-storage-credentials

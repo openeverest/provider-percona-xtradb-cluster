@@ -12,12 +12,16 @@ kind: BackupStorage
 metadata:
   name: seaweedfs-storage
 spec:
-  type: s3
-  s3:
+  backupStorageClassRef:
+    name: s3
+  location:
     bucket: everest-operator
+  parameters:
     region: us-east-1
     endpointURL: http://seaweedfs.seaweedfs.svc.cluster.local
     forcePathStyle: true
+    implementation: other
+  authentication:
+    mode: AccessKey
     credentialsSecretRef:
       name: seaweedfs-credentials
-    verifyTLS: false
