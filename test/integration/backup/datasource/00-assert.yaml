@@ -17,15 +17,21 @@ kind: BackupStorage
 metadata:
   name: test-storage-s3
 spec:
-  type: s3
-  s3:
+  backupStorageClassRef:
+    name: s3
+  location:
     bucket: test-backup-bucket
+  parameters:
     region: us-east-1
     endpointURL: http://fake
     forcePathStyle: true
+    implementation: other
+  authentication:
+    mode: AccessKey
     credentialsSecretRef:
       name: backup-storage-credentials
-    verifyTLS: false
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
 ---
 apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupClass
@@ -34,6 +40,10 @@ metadata:
 spec:
   displayName: Percona Backup for MySQL based on Percona XtraDB Cluster
   executionMode: ProviderManaged
+  backupStorageClasses:
+    - name: s3
+      authModes:
+        - AccessKey
   supportedProviders:
     - percona-xtradb-cluster
 

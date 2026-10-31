@@ -182,51 +182,44 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 		}
 	}
 
+	liveBackup := &pxcv1.BackupSpec{}
+	live := &pxcv1.PerconaXtraDBCluster{}
+	if err := c.Get(live, c.Name()); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get PerconaXtraDBCluster: %w", err)
+		}
+	} else if live.Spec.Backup != nil {
+		liveBackup = live.Spec.Backup
+	}
+
+	storages, err := c.BackupStorages()
+	if err != nil {
+		return fmt.Errorf("resolve backup storages: %w", err)
+	}
+	for _, s := range storages {
+		if s.Apply() {
+			opStorage, err := renderBackupStorage(c, s)
+			if err == nil {
+				backupSpec.Storages[s.Name()] = opStorage
+				continue
+			}
+			if errors.As(err, new(apierrors.APIStatus)) && !apierrors.IsNotFound(err) {
+				return err
+			}
+			c.RejectBackupStorage(s.Name(), err)
+		}
+		// Hold rule: keep the storage the engine already has, never add one.
+		if held, ok := liveBackup.Storages[s.Name()]; ok {
+			backupSpec.Storages[s.Name()] = held.DeepCopy()
+		}
+	}
+
 	pitrEnabled := 0
 	for _, storage := range c.Instance().Spec.Backup.Storages {
-		if storage.StorageRef.Name == "" {
-			return &controller.BackupConfigError{Reason: "StorageReferenceMissing", Message: "backup storage entries must set storageRef.name"}
-		}
-
-		bs, err := c.BackupStorage(storage.StorageRef.Name)
-		if err != nil {
-			return &controller.BackupConfigError{Reason: "StorageNotFound", Message: err.Error()}
-		}
-		if bs.Spec.Type != backupv1alpha1.BackupStorageTypeS3 || bs.Spec.S3 == nil {
-			return &controller.BackupConfigError{Reason: "StorageTypeUnsupported", Message: fmt.Sprintf("BackupStorage %q must use type s3", bs.Name)}
-		}
-
-		_, _, credErr := c.BackupStorageCredentials(bs)
-		if credErr != nil {
-			return &controller.BackupConfigError{Reason: "StorageCredentialsError", Message: credErr.Error()}
-		}
-
-		bucket := resolveBackupBucket(bs.Spec.S3.Bucket, string(c.Instance().UID))
-
-		opStorage := &pxcv1.BackupStorageSpec{
-			Type: pxcv1.BackupStorageS3,
-			S3: &pxcv1.BackupStorageS3Spec{
-				Bucket:            bucket,
-				CredentialsSecret: bs.Spec.S3.CredentialsSecretRef.Name,
-				Region:            bs.Spec.S3.Region,
-				EndpointURL:       bs.Spec.S3.EndpointURL,
-			},
-			VerifyTLS: bs.Spec.S3.VerifyTLS,
-		}
-		if bs.Spec.S3.ForcePathStyle != nil && *bs.Spec.S3.ForcePathStyle {
-			opStorage.ContainerOptions = &pxcv1.BackupContainerOptions{
-				Env: []corev1.EnvVar{{
-					Name:  "AWS_FORCE_PATH_STYLE",
-					Value: "true",
-				}},
-			}
-		}
-		backupSpec.Storages[storage.StorageRef.Name] = opStorage
+		_, rendered := backupSpec.Storages[storage.StorageRef.Name]
 
 		if storage.PITR != nil && storage.PITR.Enabled {
 			pitrEnabled++
-			backupSpec.PITR.Enabled = true
-			backupSpec.PITR.StorageName = storage.StorageRef.Name
 
 			var rawCfg []byte
 			if storage.PITR.Parameters != nil {
@@ -236,14 +229,24 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 			if err != nil {
 				return &controller.BackupConfigError{Reason: "InvalidPITRConfig", Message: err.Error()}
 			}
-			if cfg.TimeBetweenUploads != nil {
-				backupSpec.PITR.TimeBetweenUploads = *cfg.TimeBetweenUploads
-			}
-			if cfg.TimeoutSeconds != nil {
-				backupSpec.PITR.TimeoutSeconds = *cfg.TimeoutSeconds
+			if rendered {
+				backupSpec.PITR.Enabled = true
+				backupSpec.PITR.StorageName = storage.StorageRef.Name
+				if cfg.TimeBetweenUploads != nil {
+					backupSpec.PITR.TimeBetweenUploads = *cfg.TimeBetweenUploads
+				}
+				if cfg.TimeoutSeconds != nil {
+					backupSpec.PITR.TimeoutSeconds = *cfg.TimeoutSeconds
+				}
+			} else if _, ok := backupSpec.Storages[liveBackup.PITR.StorageName]; ok && liveBackup.PITR.Enabled {
+				// The binlog stream stays where it is until the engine has the new storage.
+				backupSpec.PITR = *liveBackup.PITR.DeepCopy()
 			}
 		}
 
+		if !rendered {
+			continue
+		}
 		for _, schedule := range storage.Schedules {
 			if !schedule.Enabled {
 				continue
@@ -270,6 +273,48 @@ func applyBackupSettings(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster)
 
 	pxc.Spec.Backup = backupSpec
 	return nil
+}
+
+// renderBackupStorage builds the operator storage of an entry the runtime
+// cleared to render. PXC speaks plain S3 to every S3 implementation.
+func renderBackupStorage(c *controller.Context, s controller.ResolvedBackupStorage) (*pxcv1.BackupStorageSpec, error) {
+	s3, _, err := c.BackupStorageS3(s.Storage)
+	if err != nil {
+		return nil, err
+	}
+	tls, err := c.BackupStorageTLS(s.Storage, controller.TLSSupport{CustomCA: true, SkipVerify: true})
+	if err != nil {
+		return nil, err
+	}
+
+	opStorage := &pxcv1.BackupStorageSpec{
+		Type: pxcv1.BackupStorageS3,
+		S3: &pxcv1.BackupStorageS3Spec{
+			Bucket: s.Storage.Spec.Location.Bucket + "/" + s.Path,
+			// The operator reads AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from it.
+			CredentialsSecret: s.Storage.Spec.Authentication.CredentialsSecretRef.Name,
+			Region:            s3.Region,
+			EndpointURL:       s3.EndpointURL,
+		},
+	}
+	if tls.InsecureSkipVerify {
+		opStorage.VerifyTLS = new(false)
+	}
+	if ref := tls.CASecretKeyRef; ref != nil {
+		opStorage.S3.CABundle = &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: ref.Name},
+			Key:                  ref.Key,
+		}
+	}
+	if s3.ForcePathStyle {
+		opStorage.ContainerOptions = &pxcv1.BackupContainerOptions{
+			Env: []corev1.EnvVar{{
+				Name:  "AWS_FORCE_PATH_STYLE",
+				Value: "true",
+			}},
+		}
+	}
+	return opStorage, nil
 }
 
 // buildPXCRetention returns nil (keep all) when the schedule sets no retention.
@@ -313,14 +358,6 @@ func decodeAndValidatePITRConfig(storageName string, raw []byte) (*pxcPITRConfig
 	}
 
 	return cfg, nil
-}
-
-func resolveBackupBucket(storageBucket, instanceUID string) string {
-	bucket := strings.Trim(storageBucket, "/")
-	if bucket != "" && instanceUID != "" && !strings.Contains(bucket, "/") {
-		return fmt.Sprintf("%s/%s", bucket, instanceUID)
-	}
-	return bucket
 }
 
 // OperatorBackupType implements controller.BackupMirror (optional).
