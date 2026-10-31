@@ -3,7 +3,7 @@ module github.com/openeverest/provider-percona-xtradb-cluster
 go 1.27.1
 
 require (
-	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261105181435-0223b79fa57d
+	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261108203023-87cec094317e
 	github.com/percona/percona-xtradb-cluster-operator v1.19.1
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.37.1
@@ -220,7 +220,7 @@ require (
 	github.com/nunnatsa/ginkgolinter v0.24.0 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
-	github.com/openeverest/provider-sdk v0.3.1-0.20261105152211-04995b27cda5 // indirect
+	github.com/openeverest/provider-sdk v0.3.1-0.20261108205846-d909142ae957 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
