@@ -12,13 +12,18 @@ kind: BackupStorage
 metadata:
   name: test-storage-s3
 spec:
-  type: s3
-  s3:
-    bucket: test-backup-bucket
+  backupStorageClassRef:
+    name: s3
+  location:
+    objectStore:
+      bucket: test-backup-bucket
+  parameters:
     region: us-east-1
     endpointURL: http://fake
     forcePathStyle: true
+    implementation: other
+  authentication:
+    mode: AccessKey
     credentialsSecretRef:
       name: backup-storage-credentials
-    verifyTLS: false
 
