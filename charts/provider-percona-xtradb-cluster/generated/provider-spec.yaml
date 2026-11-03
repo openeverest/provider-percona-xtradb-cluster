@@ -67,6 +67,12 @@ spec:
           type: object
       type: pxc
     proxy:
+      parametersSchema:
+        openAPIV3Schema:
+          properties:
+            configuration:
+              type: string
+          type: object
       type: haproxy
   defaultVersion: 8.4.8
   monitoring:
@@ -228,6 +234,17 @@ spec:
           label: Database Version
         proxy:
           components:
+            proxyConfiguration:
+              fieldParams:
+                label: Custom proxy configuration
+                maxRows: 8
+                minRows: 3
+                multiline: true
+                placeholder: |
+                  # HAProxy config snippet, or ProxySQL config
+                  # section, depending on the selected proxy type.
+              path: spec.components.proxy.parameters.configuration
+              uiType: text
             proxyNodes:
               fieldParams:
                 defaultValue: 2
@@ -254,6 +271,7 @@ spec:
           componentsOrder:
             - proxyType
             - proxyNodes
+            - proxyConfiguration
           description: Configure a single proxy type for the cluster.
           label: Proxy
         resources:

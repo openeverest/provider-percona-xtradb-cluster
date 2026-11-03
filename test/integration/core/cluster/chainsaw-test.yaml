@@ -7,7 +7,8 @@ spec:
   description: |
     PXC Instance lifecycle: create a 3-node cluster, report Ready from
     simulated operator status, scale, apply affinity and Service type updates,
-    switch to a single-node topology, and delete cleanly.
+    apply a custom proxy (HAProxy) configuration, switch to a single-node
+    topology, and delete cleanly.
     The Percona operator is scaled to 0 so status is simulated, matching other
     integration suites.
   catch:
@@ -120,6 +121,20 @@ spec:
                 -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
         - assert:
             file: 24-assert.yaml
+
+    - name: update-custom-proxy-config
+      try:
+        - apply:
+            file: 25-update-cluster-proxy-config.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.haproxy.configuration}' --timeout=30s
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 25-assert.yaml
 
     - name: create-single-node-cluster
       try:

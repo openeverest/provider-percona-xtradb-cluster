@@ -31,3 +31,13 @@ type PXCParameters struct {
 	// configuration file inside a component's parameters schema.
 	Configuration string `json:"configuration,omitempty"`
 }
+
+// ProxyParameters defines custom parameters for proxy components.
+type ProxyParameters struct {
+	// Configuration allows specifying custom proxy configuration as raw
+	// text, passed through verbatim to the operator (HAProxy's haproxy.cfg
+	// or ProxySQL's proxysql.cnf, depending on the selected proxy type),
+	// applied on top of, and overriding, the operator's built-in defaults.
+	// +optional
+	Configuration string `json:"configuration,omitempty"`
+}
