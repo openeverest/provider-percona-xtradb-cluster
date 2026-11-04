@@ -3,5 +3,7 @@ kind: Instance
 metadata:
   name: test-pxc-tls-bothset
 status:
-  phase: Failed
+  phase: Pending
+  (conditions[?type == 'Ready'].status | [0]): "False"
+  (conditions[?type == 'Ready'].reason | [0]): ValidationFailed
 

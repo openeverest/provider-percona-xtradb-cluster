@@ -119,6 +119,10 @@ test-integration: ## Run all integration tests against K8S cluster.
 test-integration-core: ## Run core integration tests.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
 
+.PHONY: test-integration-core-tls
+test-integration-core-tls: ## Run the core TLS integration test.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/tls
+
 .PHONY: test-integration-monitoring
 test-integration-monitoring: ## Run monitoring integration tests.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/monitoring
@@ -166,6 +170,10 @@ test-e2e-cluster: ## Run E2E cluster tests (requires PXC operator).
 .PHONY: test-e2e-cluster-datasource-backup
 test-e2e-cluster-datasource-backup: ## Run backup datasource e2e-cluster test (requires a running PXC operator).
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/datasource/backup
+
+.PHONY: test-e2e-cluster-core-tls
+test-e2e-cluster-core-tls: ## Run the TLS e2e-cluster test (requires a running PXC operator).
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/core/tls
 
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
