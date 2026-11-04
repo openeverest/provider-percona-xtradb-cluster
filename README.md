@@ -66,7 +66,7 @@ provider itself is covered under [Installation](#installation).
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
 | Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints for other monitoring classes, see [Monitoring](#monitoring) |
-| TLS | ⚠️ | the operator provisions certificates, but the connection string reported on the Instance requests `tls=false` |
+| TLS | ✅ | on by default; generated, cert-manager or your own certificates — see [TLS](#tls) |
 
 Stateful workloads additionally report:
 
@@ -202,6 +202,7 @@ The technology-specific knobs worth knowing about:
 | Parameter | Applies to | Purpose |
 |---|---|---|
 | `configuration` | `engine` | Raw `my.cnf` configuration passed to the operator |
+| `tls` | instance-wide (`spec.parameters.tls`) | TLS mode and certificate source — see [TLS](#tls) |
 
 ### Monitoring
 
@@ -225,6 +226,46 @@ monitoring extension.
   them one at a time); it connects as the operator's `monitor` user. Once the cluster is
   Ready the exporter and HAProxy's own `/metrics` endpoint are published in
   `status.monitoring.sources`.
+
+### TLS
+
+TLS is on by default. Configure it with the instance-wide `tls` parameter:
+
+```yaml
+spec:
+  parameters:
+    tls:
+      mode: requireTLS                 # preferTLS (default) | requireTLS | disabled
+      # Pick one certificate source, or neither to have certificates issued:
+      certificateSecretName: my-tls    # tls.crt, tls.key and ca.crt
+      internalCertificateSecretName: my-tls-internal  # optional; members only
+      issuer:                          # cert-manager
+        name: corp-ca
+        kind: ClusterIssuer            # Issuer (default) | ClusterIssuer
+```
+
+- **`preferTLS`** encrypts traffic between members and lets clients choose; **`requireTLS`**
+  does the same and additionally sets `require_secure_transport=ON` in the engine's
+  `my.cnf`, rejecting clients that don't use TLS. The operator can switch between
+  `preferTLS` and `requireTLS` and toggle TLS on or off on a running cluster — it briefly
+  pauses it to do so, so turning TLS on or off holds for the
+  `pxc-tls-toggle` maintenance approval (a brief downtime). `disabled` turns TLS off.
+- **Certificates** are, in order of precedence:
+  1. your secrets: `certificateSecretName` (and optionally `internalCertificateSecretName`).
+     Their subject alternative names must cover the cluster's service names
+     (`<instance>-pxc`, `<instance>-haproxy` or `<instance>-proxysql`, and their wildcard
+     forms). A cert-manager `Certificate` writing such a secret works, and renewals roll out
+     automatically; the operator never replaces secrets it did not create itself;
+  2. a cert-manager `issuer` — a `ClusterIssuer` requires cert-manager installed in the
+     cluster;
+  3. otherwise the operator issues them: through cert-manager with a CA of its own when
+     cert-manager is installed (renewed automatically), or else from a CA it generates once.
+
+  The certificate source can't be changed after creation: a new CA would split members
+  still trusting the old one.
+- **Clients** authenticate with their password and need only the CA to verify the cluster:
+  the connection secret (`<instance>-conn`) carries it as `ca.crt`, and its `uri` sets `tls`
+  to match the mode.
 
 ## Development
 

@@ -88,6 +88,26 @@ spec:
         agentVersions: '>=3.0.0 <4.0.0'
         authModes:
           - ServiceAccountToken
+  parametersSchema:
+    openAPIV3Schema:
+      properties:
+        tls:
+          properties:
+            certificateSecretName:
+              type: string
+            internalCertificateSecretName:
+              type: string
+            issuer:
+              properties:
+                kind:
+                  type: string
+                name:
+                  type: string
+              type: object
+            mode:
+              type: string
+          type: object
+      type: object
   release:
     version: 0.3.0
   topologies:
@@ -337,10 +357,97 @@ spec:
             - nodesResources
           description: Configure node count and per-node resources.
           label: Resources
+        tls:
+          components:
+            certificates:
+              components:
+                certificateSecretName:
+                  fieldParams:
+                    helperText: Secret with tls.crt, tls.key and ca.crt that clients connect to
+                    label: Certificate secret
+                    modes:
+                      edit:
+                        disabled: true
+                  path: spec.parameters.tls.certificateSecretName
+                  uiType: text
+                  validation:
+                    celExpressions:
+                      - celExpr: '!has(spec.parameters.tls.certificateSecretName) || spec.parameters.tls.certificateSecretName == '''' || !has(spec.parameters.tls.issuer.name) || spec.parameters.tls.issuer.name == '''''
+                        message: Use either a certificate secret or an issuer, not both
+                internalCertificateSecretName:
+                  fieldParams:
+                    helperText: For connections between members. Defaults to the certificate secret
+                    label: Internal certificate secret
+                    modes:
+                      edit:
+                        disabled: true
+                  path: spec.parameters.tls.internalCertificateSecretName
+                  uiType: text
+                  validation:
+                    celExpressions:
+                      - celExpr: '!has(spec.parameters.tls.internalCertificateSecretName) || spec.parameters.tls.internalCertificateSecretName == '''' || (has(spec.parameters.tls.certificateSecretName) && spec.parameters.tls.certificateSecretName != '''')'
+                        message: Set the certificate secret as well
+                issuer:
+                  components:
+                    issuerKind:
+                      fieldParams:
+                        defaultValue: Issuer
+                        label: Issuer kind
+                        modes:
+                          edit:
+                            disabled: true
+                        options:
+                          - label: Issuer
+                            value: Issuer
+                          - label: ClusterIssuer
+                            value: ClusterIssuer
+                      path: spec.parameters.tls.issuer.kind
+                      uiType: select
+                    issuerName:
+                      fieldParams:
+                        helperText: Issuer that signs the certificates
+                        label: cert-manager issuer
+                        modes:
+                          edit:
+                            disabled: true
+                      path: spec.parameters.tls.issuer.name
+                      uiType: text
+                  componentsOrder:
+                    - issuerName
+                    - issuerKind
+                  groupType: line
+                  uiType: group
+              componentsOrder:
+                - certificateSecretName
+                - internalCertificateSecretName
+                - issuer
+              description: 'Leave empty to have certificates issued for the cluster: by cert-manager when it is installed, otherwise by a CA created for the cluster. Can''t be changed after the cluster is created.'
+              groupType: bordered
+              label: Certificates
+              uiType: group
+            mode:
+              fieldParams:
+                defaultValue: preferTLS
+                label: TLS mode
+                options:
+                  - label: 'Preferred: clients choose whether to use TLS'
+                    value: preferTLS
+                  - label: 'Required: clients must use TLS'
+                    value: requireTLS
+              path: spec.parameters.tls.mode
+              uiType: select
+              validation:
+                required: true
+          componentsOrder:
+            - mode
+            - certificates
+          description: Encrypt connections to your database and between its members.
+          label: TLS
       sectionsOrder:
         - databaseVersion
         - resources
         - proxy
+        - tls
         - advanced
   versions:
     - components:

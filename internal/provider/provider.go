@@ -25,6 +25,7 @@ import (
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition"
 	"github.com/openeverest/provider-percona-xtradb-cluster/definition/components"
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
@@ -209,6 +210,11 @@ func ValidatePXC(c *controller.Context) error {
 		}
 	}
 
+	if err := validateTLS(c); err != nil {
+		l.Error(err, "TLS validation failed", "cluster", c.Name())
+		return fmt.Errorf("tls validation failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -331,6 +337,25 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
 		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(engineReplicas, engine.Resources)
+	}
+
+	tls, err := tlsParameters(c)
+	if err != nil {
+		return err
+	}
+	configureTLS(c, pxc, tls)
+	if err := gateTLSToggle(c, pxc); err != nil {
+		return fmt.Errorf("configure TLS: %w", err)
+	}
+	// gateTLSToggle may have held the enable/disable change back: require
+	// require_secure_transport only once TLS is actually enabled, or MySQL
+	// would reject every connection.
+	if tls.Mode == definition.TLSModeRequire && pxc.Spec.TLS.Enabled != nil && *pxc.Spec.TLS.Enabled {
+		cfg, err := applyRequireSecureTransport(pxc.Spec.PXC.Configuration)
+		if err != nil {
+			return fmt.Errorf("configure TLS: %w", err)
+		}
+		pxc.Spec.PXC.Configuration = cfg
 	}
 
 	// Set the image: use the user-specified image if provided, otherwise resolve
@@ -698,6 +723,11 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 	}
 	port := "3306"
 
+	ca, tlsRequired, err := tlsConnection(c)
+	if err != nil {
+		return controller.ConnectionDetails{}, err
+	}
+
 	u := &url.URL{
 		Scheme: "mysql",
 		Host:   net.JoinHostPort(host, port),
@@ -705,10 +735,10 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 		User:   url.UserPassword(username, password),
 	}
 	q := u.Query()
-	q.Set("tls", "false")
+	q.Set("tls", fmt.Sprintf("%t", tlsRequired))
 	u.RawQuery = q.Encode()
 
-	return controller.ConnectionDetails{
+	details := controller.ConnectionDetails{
 		Type:     "mysql",
 		Provider: "percona-xtradb-cluster",
 		Host:     host,
@@ -716,7 +746,14 @@ func buildConnectionDetails(c *controller.Context, pxc *pxcv1.PerconaXtraDBClust
 		Username: username,
 		Password: password,
 		URI:      u.String(),
-	}, nil
+	}
+	if len(ca) > 0 {
+		// Clients verify the cluster's certificate against this CA; the
+		// operator's own CA is not publicly trusted.
+		details.AdditionalProperties = map[string]string{caKey: string(ca)}
+	}
+
+	return details, nil
 }
 
 // Compile-time interface checks
