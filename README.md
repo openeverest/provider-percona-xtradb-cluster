@@ -308,7 +308,12 @@ code generation, and the backup/restore interfaces are documented once for all p
 - **Unit tests** — `make test-unit`.
 - **Integration tests** — `make test-integration` runs the chainsaw suites; individual suites
   are also exposed as make targets (`make test-integration-core`,
-  `make test-integration-backup`, …).
+  `make test-integration-core-tls`, `make test-integration-backup`, …). The operator is
+  scaled to 0 and status is simulated.
+- **E2E cluster tests** — `test/e2e-cluster/` runs against a real PXC operator (`core/tls`,
+  `datasource/backup`). Not executed on default CI runners; use `make deploy-provider-e2e`
+  then `make test-e2e-cluster` (or `make test-e2e-cluster-core-tls` for just the TLS suite)
+  locally.
 - **CI** — [.github/workflows/ci.yaml](.github/workflows/ci.yaml) runs lint, build, unit
   tests, generated-file verification, Helm lint, and each integration suite on every pull
   request.

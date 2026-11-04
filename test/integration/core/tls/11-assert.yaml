@@ -1,0 +1,25 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-tls
+status:
+  phase: Ready
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: test-pxc-tls
+status:
+  state: ready
+---
+# The connection secret must carry the CA from the certificate secret
+# (internal/provider/tls.go's tlsConnection / provider.go's
+# buildConnectionDetails), so TLS clients can verify the instance's
+# certificate.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-pxc-tls-conn
+data:
+  ca.crt: ZmFrZS1jYS1jcnQ=
+
