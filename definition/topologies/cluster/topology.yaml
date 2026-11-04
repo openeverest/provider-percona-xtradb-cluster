@@ -147,9 +147,21 @@ ui:
             min: 1
             int: true
             required: true
+        proxyConfiguration:
+          uiType: text
+          path: spec.components.proxy.parameters.configuration
+          fieldParams:
+            label: "Custom proxy configuration"
+            placeholder: |
+              # HAProxy config snippet, or ProxySQL config
+              # section, depending on the selected proxy type.
+            multiline: true
+            minRows: 3
+            maxRows: 8
       componentsOrder:
         - proxyType
         - proxyNodes
+        - proxyConfiguration
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced PXC settings."

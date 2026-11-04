@@ -349,8 +349,8 @@ func SyncPXC(c *controller.Context) error {
 	}
 	pxc.Spec.PXC.ImagePullPolicy = corev1.PullIfNotPresent
 
+	proxyImage := ""
 	if proxyType != "" {
-		proxyImage := ""
 		if proxy.Image != "" {
 			proxyImage = proxy.Image
 		} else if proxy.Version != "" {
@@ -370,6 +370,17 @@ func SyncPXC(c *controller.Context) error {
 		default:
 			return fmt.Errorf("unsupported proxy type %q", proxyType)
 		}
+	}
+
+	proxyConfig, cfgErr := proxyConfigurationFromComponent(proxy)
+	if cfgErr != nil {
+		return cfgErr
+	}
+	switch proxyType {
+	case common.ProxyTypeHAProxy:
+		pxc.Spec.HAProxy.Configuration = proxyConfig
+	case common.ProxyTypeProxySQL:
+		pxc.Spec.ProxySQL.Configuration = proxyConfig
 	}
 
 	if err := applyBackupSettings(c, pxc); err != nil {
@@ -719,6 +730,22 @@ func engineConfigurationFromComponent(component corev1alpha1.ComponentSpec) (str
 	cfg := &components.PXCParameters{}
 	if err := json.Unmarshal(component.Parameters.Raw, cfg); err != nil {
 		return "", fmt.Errorf("decode engine component parameters: %w", err)
+	}
+	return cfg.Configuration, nil
+}
+
+// proxyConfigurationFromComponent extracts the raw proxy configuration text
+// from a component's parameters, if any. Unlike the engine component's
+// configuration, this is passed through verbatim rather than parsed, since
+// the operator applies it as raw config file content (haproxy.cfg or
+// proxysql.cnf, depending on the selected proxy type).
+func proxyConfigurationFromComponent(proxy corev1alpha1.ComponentSpec) (string, error) {
+	if proxy.Parameters == nil || len(proxy.Parameters.Raw) == 0 {
+		return "", nil
+	}
+	cfg := &components.ProxyParameters{}
+	if err := json.Unmarshal(proxy.Parameters.Raw, cfg); err != nil {
+		return "", fmt.Errorf("decode %q component parameters: %w", common.ComponentProxy, err)
 	}
 	return cfg.Configuration, nil
 }
