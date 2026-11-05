@@ -33,11 +33,8 @@ func main() {
 	provider := provider.NewPXCProviderInterface()
 
 	r, err := reconciler.New(ctx, provider,
-		// Enable HTTP server for validation endpoint
-		reconciler.WithServer(reconciler.ServerConfig{
-			Port:           8082,
-			ValidationPath: "/validate",
-		}),
+		// Serve the health and readiness probes.
+		reconciler.WithServer(reconciler.ServerConfig{Port: 8082}),
 	)
 
 	if err != nil {

@@ -12,23 +12,37 @@ spec:
   executionMode: ProviderManaged
   parametersSchema:
     openAPIV3Schema:
+      description: |-
+        PxcBackupConfig describes the parameters accepted by Backup CRs that
+        target this class (spec.parameters). Add fields the user can set per backup.
       type: object
   providerManaged:
     limits:
       maxPITREnabledStorages: 1
     pitrParametersSchema:
       openAPIV3Schema:
+        description: |-
+          PxcPITRConfig describes the per-storage PITR parameters exposed to
+          Instance.spec.backup.storages[].pitr.parameters. Add fields a provider needs
+          to fine-tune its PITR pipeline (oplog span, compression, retention, etc.).
         properties:
           timeBetweenUploads:
-            format: double
+            default: 60
+            description: TimeBetweenUploads controls binlog upload interval in seconds.
+            minimum: 1
             type: number
           timeoutSeconds:
-            format: double
+            default: 3600
+            description: TimeoutSeconds controls timeout for each PITR upload in seconds.
+            minimum: 1
             type: number
         type: object
     supportsPITR: true
   restoreParametersSchema:
     openAPIV3Schema:
+      description: |-
+        PxcRestoreConfig describes the parameters accepted by Restore CRs that
+        target this class (spec.parameters). Add fields the user can set per restore.
       type: object
   supportedProviders:
     - percona-xtradb-cluster
