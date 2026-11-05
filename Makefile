@@ -61,8 +61,8 @@ lint: ## Run golangci-lint.
 	go tool golangci-lint run ./...
 
 .PHONY: run
-run: generate ## Run the provider locally.
-	go run cmd/provider/main.go
+run: generate ## Run the provider locally, without the admission webhook (it needs the chart's certificate).
+	go run cmd/provider/main.go --admission=false
 
 ##@ Code Generation
 
@@ -118,6 +118,10 @@ test-integration: ## Run all integration tests against K8S cluster.
 .PHONY: test-integration-core
 test-integration-core: ## Run core integration tests.
 	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core
+
+.PHONY: test-integration-core-admission
+test-integration-core-admission: ## Run admission webhook integration tests.
+	. ./test/vars.sh && chainsaw test --config ./test/integration/.chainsaw.yaml ./test/integration/core/admission
 
 .PHONY: test-integration-monitoring
 test-integration-monitoring: ## Run monitoring integration tests.

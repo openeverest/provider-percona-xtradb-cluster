@@ -1,0 +1,23 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-admission
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 3
+      resources:
+        limits:
+          cpu: "1"
+          memory: 4G
+        requests:
+          cpu: 600m
+          memory: 2G
+      storage:
+        size: 25Gi
+    proxy:
+      type: haproxy
+      replicas: 1
