@@ -61,16 +61,30 @@ spec:
     engine:
       parametersSchema:
         openAPIV3Schema:
+          description: |-
+            PXCParameters defines structured parameters for PXC engine components.
+            This struct is converted to OpenAPI schema and served via the /schema endpoint.
+            Provider users can specify these fields in the Instance's component parameters.
           properties:
             configuration:
+              description: |-
+                Configuration is the raw my.cnf-style engine configuration file content.
+                `configuration` is the conventional property name for the engine
+                configuration file inside a component's parameters schema.
               type: string
           type: object
       type: pxc
     proxy:
       parametersSchema:
         openAPIV3Schema:
+          description: ProxyParameters defines custom parameters for proxy components.
           properties:
             configuration:
+              description: |-
+                Configuration allows specifying custom proxy configuration as raw
+                text, passed through verbatim to the operator (HAProxy's haproxy.cfg
+                or ProxySQL's proxysql.cnf, depending on the selected proxy type),
+                applied on top of, and overriding, the operator's built-in defaults.
               type: string
           type: object
       type: haproxy
@@ -117,9 +131,15 @@ spec:
                     affinity: {}
                     topologySpreadConstraints: {}
                 service: {}
-                type: {}
+                type:
+                  enum:
+                    - haproxy
+                    - proxysql
       parametersSchema:
         openAPIV3Schema:
+          description: |-
+            ClusterTopologyParameters is intentionally empty.
+            Proxy settings are configured through spec.components.proxy.
           type: object
   uiSchema:
     cluster:

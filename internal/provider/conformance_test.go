@@ -21,7 +21,7 @@ import (
 )
 
 var unverifiableFields = map[string]string{
-	"spec.components.proxy.type": "proxy.type is a closed enum; an invalid value is rejected by ValidatePXC rather than reaching the engine CR",
+	"spec.components.proxy.type": "proxy.type is a closed enum; an invalid value is rejected by validation rather than reaching the engine CR",
 }
 
 func TestUISchemaIsReconciled(t *testing.T) {

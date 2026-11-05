@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-percona-xtradb-cluster
+  namespace: provider-system
+status:
+  readyReplicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-percona-xtradb-cluster-operator
+  namespace: provider-system
+spec:
+  replicas: 0
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: provider-percona-xtradb-cluster.openeverest.io
+webhooks:
+  - name: instances.percona-xtradb-cluster.openeverest.io
+    failurePolicy: Ignore

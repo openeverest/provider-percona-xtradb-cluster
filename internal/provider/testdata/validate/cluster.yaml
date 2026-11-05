@@ -1,0 +1,17 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: orders
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  topology:
+    type: cluster
+  components:
+    engine:
+      replicas: 3
+      storage:
+        size: 10Gi
+    proxy:
+      type: haproxy
+      replicas: 2

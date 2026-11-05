@@ -1,0 +1,139 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core-admission
+spec:
+  description: |
+    The provider's admission webhook: it rejects an invalid Instance with the
+    field path, admits it while the provider is down, blocks an update only
+    on errors the stored Instance did not already have, rejects another
+    provider's backup class, and warns about a missing user Secret.
+    The Percona operator is scaled to 0, matching other integration suites.
+  # Scales the provider down, which every other test depends on.
+  concurrent: false
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: provider-ready
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+        - assert:
+            file: 00-assert.yaml
+
+    - name: reject-invalid
+      try:
+        - script:
+            content: kubectl apply --dry-run=server -n $NAMESPACE -f 10-invalid-cluster.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.components[engine].replicas')): true
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 10-invalid-cluster.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.components[engine].replicas')): true
+        - error:
+            file: 10-error.yaml
+
+    - name: admit-while-provider-down
+      try:
+        - script:
+            timeout: 1m
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster --replicas=0
+              while kubectl -n provider-system get pods -o name \
+                -l app.kubernetes.io/name=provider-percona-xtradb-cluster | grep -q .; do
+                sleep 1
+              done
+        - apply:
+            file: 10-invalid-cluster.yaml
+      finally:
+        - script:
+            timeout: 2m
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster --replicas=1
+              kubectl -n provider-system rollout status deployment/provider-percona-xtradb-cluster --timeout=110s
+
+    - name: report-once-back
+      try:
+        - assert:
+            file: 20-assert.yaml
+
+    - name: block-new-errors-only
+      try:
+        - script:
+            timeout: 1m
+            content: |
+              # Writes are admitted until the webhook serves again.
+              for i in $(seq 1 25); do
+                kubectl apply --dry-run=server -n $NAMESPACE -f 30-new-error.yaml >/dev/null 2>&1 || break
+                sleep 2
+              done
+              kubectl apply -n $NAMESPACE -f 30-new-error.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.components[proxy].replicas')): true
+              (contains($stderr, 'spec.components[engine].replicas')): false
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 31-unrelated-change.yaml
+        - assert:
+            file: 31-assert.yaml
+
+    - name: fix
+      try:
+        - apply:
+            file: 40-fixed-cluster.yaml
+        - assert:
+            file: 40-assert.yaml
+
+    - name: reject-another-providers-backup-class
+      try:
+        - apply:
+            file: 50-other-provider-class.yaml
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 51-other-provider-class.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.backup.classRef.name')): true
+
+    - name: warn-about-a-missing-user-secret
+      try:
+        - script:
+            content: kubectl apply -n $NAMESPACE -f 52-missing-user-secret.yaml
+            check:
+              ($error == null): true
+              (contains($stderr, 'test-admission-missing-users named by spec.userSecretRef not found')): true
+      cleanup:
+        - script:
+            content: kubectl -n $NAMESPACE delete in/test-pxc-nosecret --ignore-not-found --timeout=60s
+
+    - name: delete-cluster
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete instance/test-pxc-admission pxc.pxc.percona.com/test-pxc-admission --wait=false --ignore-not-found && sleep 5
+              # The PXC operator is scaled to 0, so nothing processes the cluster's finalizers.
+              kubectl -n $NAMESPACE patch pxc.pxc.percona.com/test-pxc-admission -p '{"metadata":{"finalizers":null}}' --type merge || true
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            name: test-pxc-admission
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            name: test-pxc-admission
+            for:
+              deletion: {}
