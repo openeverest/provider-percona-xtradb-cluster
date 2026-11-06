@@ -8,5 +8,5 @@ status:
   # Ready condition instead of status.phase.
   phase: Pending
   (conditions[?type == 'Ready'].status | [0]): "False"
-  (conditions[?type == 'Ready'].reason | [0]): ValidationFailed
+  (conditions[?type == 'Ready'].reason | [0]): InvalidReference
 

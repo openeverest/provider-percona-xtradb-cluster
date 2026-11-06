@@ -8,7 +8,7 @@ status:
   # ConditionReady's doc comment in api/core/v1alpha1/instance_types.go.
   phase: Ready
   (conditions[?type == 'Ready'].status | [0]): "False"
-  (conditions[?type == 'Ready'].reason | [0]): ValidationFailed
+  (conditions[?type == 'Ready'].reason | [0]): InvalidReference
 ---
 # The operator CR must keep the original certificate secret: the provider
 # must not apply the rejected change.

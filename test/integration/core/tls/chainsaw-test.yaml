@@ -64,12 +64,16 @@ spec:
             content: |
               kubectl patch instance/test-pxc-tls -n "$NAMESPACE" --type=merge \
                 -p '{"spec":{"parameters":{"tls":{"certificateSecretName":"test-pxc-tls-certs-2"}}}}'
-              # The Instance is already Ready: a rejected validation keeps the
+              # The certificate source change is a cluster-aware rule (it reads
+              # the existing PerconaXtraDBCluster CR), checked by
+              # ValidateReferences rather than the pure Validate, and surfaced
+              # with reason InvalidReference rather than ValidationFailed. The
+              # Instance is already Ready: a rejected change keeps the
               # provider's Ready condition out of the Phase (see
               # api/core/v1alpha1/instance_types.go's ConditionReady doc), so we
               # wait on the condition rather than status.phase.
               kubectl wait instance/test-pxc-tls -n "$NAMESPACE" \
-                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=ValidationFailed --timeout=30s
+                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=InvalidReference --timeout=30s
         - assert:
             file: 20-assert.yaml
 
@@ -92,9 +96,12 @@ spec:
             content: |
               # A brand-new Instance stays Pending while blocked (see block()
               # in provider-runtime/reconciler/ready.go); the rejection is
-              # surfaced on the Ready condition, not status.phase.
+              # surfaced on the Ready condition, not status.phase. The secret's
+              # missing key is a cluster-aware rule (ValidateReferences reads
+              # the secret itself), so the reason is InvalidReference rather
+              # than ValidationFailed.
               kubectl wait instance/test-pxc-tls-badsecret -n "$NAMESPACE" \
-                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=ValidationFailed --timeout=30s
+                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=InvalidReference --timeout=30s
               # Validation must fail before Sync ever creates the operator CR.
               if kubectl get pxc.pxc.percona.com/test-pxc-tls-badsecret -n "$NAMESPACE" 2>/dev/null; then
                 echo "unexpected: PerconaXtraDBCluster test-pxc-tls-badsecret was created despite an incomplete certificate secret" >&2
