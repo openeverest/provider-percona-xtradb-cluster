@@ -145,79 +145,6 @@ func imageForBundledProxy(c *controller.Context, spec *corev1alpha1.ProviderSpec
 	return defaultImageForComponentType(spec, proxyType), nil
 }
 
-// ValidatePXC validates the Instance spec for PXC.
-func ValidatePXC(c *controller.Context) error {
-	l := log.FromContext(c.Context())
-	l.Info("Validating PXC cluster", "cluster", c.Name())
-
-	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
-	if !ok {
-		return fmt.Errorf("instance spec missing %q component", common.ComponentEngine)
-	}
-	engineReplicas := defaultEngineReplicas
-	if engine.Replicas != nil {
-		engineReplicas = *engine.Replicas
-	}
-	if engineReplicas < 1 {
-		return fmt.Errorf("%q replicas must be >= 1", common.ComponentEngine)
-	}
-
-	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
-	if !ok {
-		return fmt.Errorf("instance spec missing %q component", common.ComponentProxy)
-	}
-	if proxy.Type == "" {
-		return fmt.Errorf("instance spec missing %q component type", common.ComponentProxy)
-	}
-	proxyReplicas := defaultProxyReplicas
-	if proxy.Replicas != nil {
-		proxyReplicas = *proxy.Replicas
-	}
-	if proxyReplicas < 1 {
-		return fmt.Errorf("%q replicas must be >= 1", common.ComponentProxy)
-	}
-	switch proxy.Type {
-	case common.ProxyTypeHAProxy, common.ProxyTypeProxySQL:
-	default:
-		return fmt.Errorf("unsupported proxy type %q", proxy.Type)
-	}
-
-	if c.Instance().Spec.Backup != nil && c.Instance().Spec.Backup.Enabled {
-		bc, err := c.BackupClassForInstance()
-		if err != nil {
-			return err
-		}
-		if err := controller.ValidateInstanceBackupAgainstClass(c.Instance(), bc); err != nil {
-			return err
-		}
-
-		pitrEnabled := 0
-		for _, s := range c.Instance().Spec.Backup.Storages {
-			if s.PITR != nil && s.PITR.Enabled {
-				pitrEnabled++
-
-				var rawCfg []byte
-				if s.PITR.Parameters != nil {
-					rawCfg = s.PITR.Parameters.Raw
-				}
-				if _, err := decodeAndValidatePITRConfig(s.StorageRef.Name, rawCfg); err != nil {
-					return err
-				}
-			}
-		}
-		if pitrEnabled > 1 {
-			return fmt.Errorf("PXC supports PITR on at most one storage")
-		}
-	}
-
-	if err := validateTLS(c); err != nil {
-		l.Error(err, "TLS validation failed", "cluster", c.Name())
-		return fmt.Errorf("tls validation failed: %w", err)
-	}
-
-	return nil
-}
-
 // SyncPXC creates or updates the PerconaXtraDBCluster resource based on the Instance spec.
 func SyncPXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
@@ -247,7 +174,7 @@ func SyncPXC(c *controller.Context) error {
 	// Get the engine component spec
 	engine, ok := c.Instance().Spec.Components[common.ComponentEngine]
 	if !ok {
-		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentEngine)
+		return fmt.Errorf("instance spec has invalid %q component; this should be caught by Validate", common.ComponentEngine)
 	}
 	engineReplicas := defaultEngineReplicas
 	if engine.Replicas != nil {
@@ -279,7 +206,7 @@ func SyncPXC(c *controller.Context) error {
 
 	proxy, ok := c.Instance().Spec.Components[common.ComponentProxy]
 	if !ok || proxy.Type == "" {
-		return fmt.Errorf("instance spec has invalid %q component; this should be caught by ValidatePXC", common.ComponentProxy)
+		return fmt.Errorf("instance spec has invalid %q component; this should be caught by Validate", common.ComponentProxy)
 	}
 
 	proxyType := proxy.Type
@@ -678,11 +605,6 @@ func NewPXCProviderInterface() *PXCProvider {
 	}
 
 	return p
-}
-
-// Validate validates the Instance spec.
-func (p *PXCProvider) Validate(c *controller.Context) error {
-	return ValidatePXC(c)
 }
 
 // Sync ensures all resources exist and are configured correctly.

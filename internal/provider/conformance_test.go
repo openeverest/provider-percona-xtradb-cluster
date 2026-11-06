@@ -21,7 +21,7 @@ import (
 )
 
 var unverifiableFields = map[string]string{
-	"spec.components.proxy.type": "proxy.type is a closed enum; an invalid value is rejected by ValidatePXC rather than reaching the engine CR",
+	"spec.components.proxy.type": "proxy.type is a closed enum; an invalid value is rejected by validation rather than reaching the engine CR",
 	// mode is a closed enum reshaped into pxc.Spec.TLS.Enabled (a bool) plus,
 	// for requireTLS, a require_secure_transport directive added to the
 	// engine's my.cnf: an arbitrary probe string is neither "disabled" nor
@@ -32,6 +32,7 @@ var unverifiableFields = map[string]string{
 	// kind only takes effect together with issuer.name (the harness probes
 	// one field at a time).
 	"spec.parameters.tls.issuer.kind": "applies only with issuer.name set; see TestConfigureTLS",
+
 }
 
 func TestUISchemaIsReconciled(t *testing.T) {
