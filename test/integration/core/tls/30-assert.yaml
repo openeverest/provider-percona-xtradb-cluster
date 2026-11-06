@@ -1,0 +1,12 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-tls-badsecret
+status:
+  # A brand-new Instance blocked by validation stays Pending (see block() in
+  # provider-runtime/reconciler/ready.go); the rejection is surfaced on the
+  # Ready condition instead of status.phase.
+  phase: Pending
+  (conditions[?type == 'Ready'].status | [0]): "False"
+  (conditions[?type == 'Ready'].reason | [0]): InvalidReference
+

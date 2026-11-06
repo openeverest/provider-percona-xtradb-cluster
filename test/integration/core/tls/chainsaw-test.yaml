@@ -1,0 +1,153 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core-tls
+spec:
+  description: |
+    TLS certificate configuration (spec.parameters.tls): a user-supplied
+    certificate secret is wired onto PerconaXtraDBCluster.spec.sslSecretName,
+    its CA is exposed on the connection secret, the certificate source
+    cannot change on an existing instance, and invalid configurations
+    (an incomplete secret, or a secret and an issuer set together) are
+    rejected before the operator CR is ever created.
+    The PXC operator is scaled to 0 so status is simulated, matching
+    other integration suites.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: scale-down-pxc-operator
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+        - assert:
+            file: 00-assert.yaml
+
+    - name: create-cluster-with-certificate-secret
+      try:
+        - apply:
+            file: 10-create-secret.yaml
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    # Create the users secret, then simulate the cluster becoming ready. The
+    # secret must exist before the status patch triggers reconcile, otherwise
+    # connection details fail and the Instance cannot become Ready.
+    - name: cluster-ready
+      try:
+        - apply:
+            file: 11-cluster-ready.yaml
+        - script:
+            content: |
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-tls -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-tls --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-tls-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 11-assert.yaml
+
+    - name: certificate-secret-is-immutable
+      try:
+        - apply:
+            file: 20-create-another-secret.yaml
+        - script:
+            content: |
+              kubectl patch instance/test-pxc-tls -n "$NAMESPACE" --type=merge \
+                -p '{"spec":{"parameters":{"tls":{"certificateSecretName":"test-pxc-tls-certs-2"}}}}'
+              # The certificate source change is a cluster-aware rule (it reads
+              # the existing PerconaXtraDBCluster CR), checked by
+              # ValidateReferences rather than the pure Validate, and surfaced
+              # with reason InvalidReference rather than ValidationFailed. The
+              # Instance is already Ready: a rejected change keeps the
+              # provider's Ready condition out of the Phase (see
+              # api/core/v1alpha1/instance_types.go's ConditionReady doc), so we
+              # wait on the condition rather than status.phase.
+              kubectl wait instance/test-pxc-tls -n "$NAMESPACE" \
+                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=InvalidReference --timeout=30s
+        - assert:
+            file: 20-assert.yaml
+
+    - name: revert-to-original-certificate-secret
+      try:
+        - script:
+            content: |
+              kubectl patch instance/test-pxc-tls -n "$NAMESPACE" --type=merge \
+                -p '{"spec":{"parameters":{"tls":{"certificateSecretName":"test-pxc-tls-certs"}}}}'
+              kubectl wait instance/test-pxc-tls -n "$NAMESPACE" \
+                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].status}'=True --timeout=30s
+        - assert:
+            file: 21-assert.yaml
+
+    - name: incomplete-certificate-secret-is-rejected
+      try:
+        - apply:
+            file: 30-create-cluster-incomplete-secret.yaml
+        - script:
+            content: |
+              # A brand-new Instance stays Pending while blocked (see block()
+              # in provider-runtime/reconciler/ready.go); the rejection is
+              # surfaced on the Ready condition, not status.phase. The secret's
+              # missing key is a cluster-aware rule (ValidateReferences reads
+              # the secret itself), so the reason is InvalidReference rather
+              # than ValidationFailed.
+              kubectl wait instance/test-pxc-tls-badsecret -n "$NAMESPACE" \
+                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=InvalidReference --timeout=30s
+              # Validation must fail before Sync ever creates the operator CR.
+              if kubectl get pxc.pxc.percona.com/test-pxc-tls-badsecret -n "$NAMESPACE" 2>/dev/null; then
+                echo "unexpected: PerconaXtraDBCluster test-pxc-tls-badsecret was created despite an incomplete certificate secret" >&2
+                exit 1
+              fi
+        - assert:
+            file: 30-assert.yaml
+        - script:
+            content: |
+              kubectl -n "$NAMESPACE" delete instance/test-pxc-tls-badsecret --ignore-not-found --wait=true
+
+    - name: certificate-secret-and-issuer-together-is-rejected
+      try:
+        - apply:
+            file: 31-create-cluster-secret-and-issuer.yaml
+        - script:
+            content: |
+              kubectl wait instance/test-pxc-tls-bothset -n "$NAMESPACE" \
+                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=ValidationFailed --timeout=30s
+              if kubectl get pxc.pxc.percona.com/test-pxc-tls-bothset -n "$NAMESPACE" 2>/dev/null; then
+                echo "unexpected: PerconaXtraDBCluster test-pxc-tls-bothset was created despite both certificateSecretName and issuer being set" >&2
+                exit 1
+              fi
+        - assert:
+            file: 31-assert.yaml
+        - script:
+            content: |
+              kubectl -n "$NAMESPACE" delete instance/test-pxc-tls-bothset --ignore-not-found --wait=true
+
+
+    - name: delete-cluster
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete instance/test-pxc-tls pxc.pxc.percona.com/test-pxc-tls --wait=false --ignore-not-found && sleep 5
+              kubectl -n $NAMESPACE patch pxc.pxc.percona.com/test-pxc-tls -p '{"metadata":{"finalizers":null}}' --type merge || true
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            name: test-pxc-tls
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            name: test-pxc-tls
+            for:
+              deletion: {}
+

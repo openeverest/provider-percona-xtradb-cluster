@@ -162,6 +162,92 @@ ui:
         - proxyType
         - proxyNodes
         - proxyConfiguration
+    tls:
+      label: "TLS"
+      description: "Encrypt connections to your database and between its members."
+      components:
+        mode:
+          uiType: select
+          path: spec.parameters.tls.mode
+          fieldParams:
+            label: "TLS mode"
+            defaultValue: "preferTLS"
+            options:
+              - label: "Preferred: clients choose whether to use TLS"
+                value: "preferTLS"
+              - label: "Required: clients must use TLS"
+                value: "requireTLS"
+          validation:
+            required: true
+        certificates:
+          uiType: group
+          groupType: bordered
+          label: "Certificates"
+          description: "Leave empty to have certificates issued for the cluster: by cert-manager when it is installed, otherwise by a CA created for the cluster. Can't be changed after the cluster is created."
+          components:
+            certificateSecretName:
+              uiType: text
+              path: spec.parameters.tls.certificateSecretName
+              fieldParams:
+                label: "Certificate secret"
+                helperText: "Secret with tls.crt, tls.key and ca.crt that clients connect to"
+                modes:
+                  edit:
+                    disabled: true
+              validation:
+                celExpressions:
+                  - celExpr: "!has(spec.parameters.tls.certificateSecretName) || spec.parameters.tls.certificateSecretName == '' || !has(spec.parameters.tls.issuer.name) || spec.parameters.tls.issuer.name == ''"
+                    message: "Use either a certificate secret or an issuer, not both"
+            internalCertificateSecretName:
+              uiType: text
+              path: spec.parameters.tls.internalCertificateSecretName
+              fieldParams:
+                label: "Internal certificate secret"
+                helperText: "For connections between members. Defaults to the certificate secret"
+                modes:
+                  edit:
+                    disabled: true
+              validation:
+                celExpressions:
+                  - celExpr: "!has(spec.parameters.tls.internalCertificateSecretName) || spec.parameters.tls.internalCertificateSecretName == '' || (has(spec.parameters.tls.certificateSecretName) && spec.parameters.tls.certificateSecretName != '')"
+                    message: "Set the certificate secret as well"
+            issuer:
+              uiType: group
+              groupType: line
+              components:
+                issuerName:
+                  uiType: text
+                  path: spec.parameters.tls.issuer.name
+                  fieldParams:
+                    label: "cert-manager issuer"
+                    helperText: "Issuer that signs the certificates"
+                    modes:
+                      edit:
+                        disabled: true
+                issuerKind:
+                  uiType: select
+                  path: spec.parameters.tls.issuer.kind
+                  fieldParams:
+                    label: "Issuer kind"
+                    defaultValue: "Issuer"
+                    options:
+                      - label: "Issuer"
+                        value: "Issuer"
+                      - label: "ClusterIssuer"
+                        value: "ClusterIssuer"
+                    modes:
+                      edit:
+                        disabled: true
+              componentsOrder:
+                - issuerName
+                - issuerKind
+          componentsOrder:
+            - certificateSecretName
+            - internalCertificateSecretName
+            - issuer
+      componentsOrder:
+        - mode
+        - certificates
     advanced:
       label: "Advanced configuration"
       description: "Configure advanced PXC settings."
@@ -254,4 +340,5 @@ ui:
     - databaseVersion
     - resources
     - proxy
+    - tls
     - advanced

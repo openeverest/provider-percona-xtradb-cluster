@@ -7,6 +7,10 @@
 
 name: percona-xtradb-cluster
 
+# Instance-wide parameters (Instance.spec.parameters), a Go type in
+# definition/types.go.
+parametersSchema: Parameters
+
 # Components map logical component names to their type.
 # The type must match a key in versions.yaml's componentTypes.
 # Omit 'parametersSchema' for components that have no structured parameters.

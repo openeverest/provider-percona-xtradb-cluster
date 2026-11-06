@@ -1,0 +1,21 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-tls
+status:
+  # Phase is left as-is (Ready) on an already-ready instance: a rejected
+  # validation is surfaced on the Ready condition instead, see
+  # ConditionReady's doc comment in api/core/v1alpha1/instance_types.go.
+  phase: Ready
+  (conditions[?type == 'Ready'].status | [0]): "False"
+  (conditions[?type == 'Ready'].reason | [0]): InvalidReference
+---
+# The operator CR must keep the original certificate secret: the provider
+# must not apply the rejected change.
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: test-pxc-tls
+spec:
+  sslSecretName: test-pxc-tls-certs
+

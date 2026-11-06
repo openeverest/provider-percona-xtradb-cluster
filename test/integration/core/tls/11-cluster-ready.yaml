@@ -1,0 +1,11 @@
+---
+# Create the credentials secret so the Instance can reach Ready.
+# The provider reads root from everest-secrets-<name>.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-test-pxc-tls
+type: Opaque
+stringData:
+  root: test-password
+

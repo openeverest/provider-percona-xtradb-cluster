@@ -1,0 +1,16 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-tls
+spec:
+  parameters:
+    tls:
+      certificateSecretName: pxc-tls-certs
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-tls
+spec:
+  sslSecretName: pxc-tls-certs
+
