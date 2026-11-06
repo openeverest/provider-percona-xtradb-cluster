@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -72,7 +73,7 @@ func TestTLSParametersDefaults(t *testing.T) {
 	t.Parallel()
 
 	c := tlsContext(t, "")
-	tls, err := tlsParameters(c)
+	tls, err := tlsParameters(c.Instance())
 	require.NoError(t, err)
 	assert.Equal(t, definition.TLSParameters{Mode: definition.TLSModePrefer}, tls)
 }
@@ -81,7 +82,7 @@ func TestTLSParametersDefaultsIssuerKind(t *testing.T) {
 	t.Parallel()
 
 	c := tlsContext(t, `{"tls":{"mode":"requireTLS","issuer":{"name":"my-issuer"}}}`)
-	tls, err := tlsParameters(c)
+	tls, err := tlsParameters(c.Instance())
 	require.NoError(t, err)
 	require.NotNil(t, tls.Issuer)
 	assert.Equal(t, definition.IssuerKindIssuer, tls.Issuer.Kind)
@@ -91,7 +92,7 @@ func TestTLSParametersDropsNamelessIssuer(t *testing.T) {
 	t.Parallel()
 
 	c := tlsContext(t, `{"tls":{"issuer":{"kind":"ClusterIssuer"}}}`)
-	tls, err := tlsParameters(c)
+	tls, err := tlsParameters(c.Instance())
 	require.NoError(t, err)
 	assert.Nil(t, tls.Issuer)
 }
@@ -224,7 +225,88 @@ func TestApplyRequireSecureTransportKeepsUserValue(t *testing.T) {
 	assert.Equal(t, "[mysqld]\nrequire_secure_transport = OFF\n", out)
 }
 
-func TestValidateTLS(t *testing.T) {
+func TestValidateTLSParameters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		tls       definition.TLSParameters
+		wantField string
+		wantErr   string
+	}{
+		{
+			name: "defaults ok",
+			tls:  definition.TLSParameters{Mode: definition.TLSModePrefer},
+		},
+		{
+			name:      "invalid mode",
+			tls:       definition.TLSParameters{Mode: "bogus"},
+			wantField: "spec.parameters.tls.mode",
+			wantErr:   "supported values",
+		},
+		{
+			name: "invalid issuer kind",
+			tls: definition.TLSParameters{
+				Mode:   definition.TLSModePrefer,
+				Issuer: &definition.IssuerReference{Name: "my-issuer", Kind: "bogus"},
+			},
+			wantField: "spec.parameters.tls.issuer.kind",
+			wantErr:   "supported values",
+		},
+		{
+			name: "disabled with certificate",
+			tls: definition.TLSParameters{
+				Mode:                  definition.TLSModeDisabled,
+				CertificateSecretName: "my-tls",
+			},
+			wantField: "spec.parameters.tls",
+			wantErr:   "certificates and issuer apply only with TLS enabled",
+		},
+		{
+			name: "internal without external",
+			tls: definition.TLSParameters{
+				Mode:                          definition.TLSModePrefer,
+				InternalCertificateSecretName: "my-tls-internal",
+			},
+			wantField: "spec.parameters.tls.certificateSecretName",
+		},
+		{
+			name: "certificate and issuer",
+			tls: definition.TLSParameters{
+				Mode:                  definition.TLSModePrefer,
+				CertificateSecretName: "my-tls",
+				Issuer:                &definition.IssuerReference{Name: "my-issuer", Kind: definition.IssuerKindIssuer},
+			},
+			wantField: "spec.parameters.tls",
+			wantErr:   "use either certificate secrets or an issuer, not both",
+		},
+		{
+			name: "custom certificate ok",
+			tls: definition.TLSParameters{
+				Mode:                  definition.TLSModePrefer,
+				CertificateSecretName: "my-tls",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			errs := validateTLSParameters(tt.tls, field.NewPath("spec", "parameters", "tls"))
+			if tt.wantField == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1)
+			assert.Equal(t, tt.wantField, errs[0].Field)
+			if tt.wantErr != "" {
+				assert.Contains(t, errs[0].Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateReferences(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -238,32 +320,9 @@ func TestValidateTLS(t *testing.T) {
 			parameters: "",
 		},
 		{
-			name:       "invalid mode",
-			parameters: `{"tls":{"mode":"bogus"}}`,
-			wantErr:    "mode must be one of",
-		},
-		{
-			name:       "disabled with certificate",
-			parameters: `{"tls":{"mode":"disabled","certificateSecretName":"my-tls"}}`,
-			objs:       []client.Object{certSecret("my-tls")},
-			wantErr:    "certificates and issuer apply only with TLS enabled",
-		},
-		{
-			name:       "internal without external",
-			parameters: `{"tls":{"internalCertificateSecretName":"my-tls-internal"}}`,
-			objs:       []client.Object{certSecret("my-tls-internal")},
-			wantErr:    "internalCertificateSecretName requires certificateSecretName",
-		},
-		{
-			name:       "certificate and issuer",
-			parameters: `{"tls":{"certificateSecretName":"my-tls","issuer":{"name":"my-issuer"}}}`,
-			objs:       []client.Object{certSecret("my-tls")},
-			wantErr:    "use either certificate secrets or an issuer, not both",
-		},
-		{
 			name:       "missing certificate secret",
 			parameters: `{"tls":{"certificateSecretName":"missing"}}`,
-			wantErr:    `get certificate secret "missing"`,
+			wantErr:    `Not found`,
 		},
 		{
 			name:       "custom certificate ok",
@@ -276,18 +335,19 @@ func TestValidateTLS(t *testing.T) {
 			t.Parallel()
 
 			c := tlsContext(t, tt.parameters, tt.objs...)
-			err := validateTLS(c)
+			errs, err := (&PXCProvider{}).ValidateReferences(c)
+			require.NoError(t, err)
 			if tt.wantErr == "" {
-				require.NoError(t, err)
+				assert.Empty(t, errs)
 				return
 			}
-			require.Error(t, err)
-			assert.ErrorContains(t, err, tt.wantErr)
+			require.Len(t, errs, 1)
+			assert.Contains(t, errs[0].Error(), tt.wantErr)
 		})
 	}
 }
 
-func TestValidateTLSChangeRejectsCertificateSourceChange(t *testing.T) {
+func TestValidateReferencesRejectsCertificateSourceChange(t *testing.T) {
 	t.Parallel()
 
 	existing := &pxcv1.PerconaXtraDBCluster{
@@ -296,12 +356,13 @@ func TestValidateTLSChangeRejectsCertificateSourceChange(t *testing.T) {
 	}
 	c := tlsContext(t, `{"tls":{"certificateSecretName":"new-tls"}}`, existing, certSecret("new-tls"))
 
-	err := validateTLS(c)
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "certificates and issuer can't change")
+	errs, err := (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	require.Len(t, errs, 1)
+	assert.Contains(t, errs[0].Error(), "certificates and issuer can't change")
 }
 
-func TestValidateTLSChangeAllowsModeChange(t *testing.T) {
+func TestValidateReferencesAllowsModeChange(t *testing.T) {
 	t.Parallel()
 
 	existing := &pxcv1.PerconaXtraDBCluster{
@@ -309,7 +370,9 @@ func TestValidateTLSChangeAllowsModeChange(t *testing.T) {
 	}
 	c := tlsContext(t, `{"tls":{"mode":"requireTLS"}}`, existing)
 
-	require.NoError(t, validateTLS(c))
+	errs, err := (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
 }
 
 func TestTLSConnection(t *testing.T) {

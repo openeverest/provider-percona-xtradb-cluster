@@ -266,7 +266,7 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(engineReplicas, engine.Resources)
 	}
 
-	tls, err := tlsParameters(c)
+	tls, err := tlsParameters(c.Instance())
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ package provider
 
 import (
 	"bytes"
-	"errors"
+	"encoding/json"
 	"fmt"
 
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
@@ -24,11 +24,15 @@ import (
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 
 	"github.com/openeverest/provider-percona-xtradb-cluster/definition"
 )
+
+var _ controller.ReferenceValidator = (*PXCProvider)(nil)
 
 const (
 	certManagerGroup = "cert-manager.io"
@@ -50,10 +54,10 @@ const (
 var certificateSecretKeys = []string{"tls.crt", "tls.key", caKey}
 
 // tlsParameters returns the cluster's TLS parameters with defaults applied.
-func tlsParameters(c *controller.Context) (definition.TLSParameters, error) {
+func tlsParameters(instance *corev1alpha1.Instance) (definition.TLSParameters, error) {
 	params := definition.Parameters{}
-	if raw := c.Instance().Spec.Parameters; raw != nil && len(raw.Raw) > 0 {
-		if err := c.DecodeParameters(&params); err != nil {
+	if raw := instance.Spec.Parameters; raw != nil && len(raw.Raw) > 0 {
+		if err := json.Unmarshal(raw.Raw, &params); err != nil {
 			return definition.TLSParameters{}, fmt.Errorf("decode parameters: %w", err)
 		}
 	}
@@ -170,76 +174,99 @@ func applyRequireSecureTransport(configuration string) (string, error) {
 	return out.String(), nil
 }
 
-// validateTLS validates the TLS parameters, and that they keep what can't
-// change on an existing cluster.
-func validateTLS(c *controller.Context) error {
-	tls, err := tlsParameters(c)
-	if err != nil {
-		return err
-	}
+func validateTLSParameters(tls definition.TLSParameters, path *field.Path) field.ErrorList {
+	var errs field.ErrorList
 
 	switch tls.Mode {
 	case definition.TLSModePrefer, definition.TLSModeRequire, definition.TLSModeDisabled:
 	default:
-		return fmt.Errorf("mode must be one of %s, %s or %s, got %q",
-			definition.TLSModePrefer, definition.TLSModeRequire, definition.TLSModeDisabled, tls.Mode)
+		errs = append(errs, field.NotSupported(path.Child("mode"), tls.Mode,
+			[]string{string(definition.TLSModePrefer), string(definition.TLSModeRequire), string(definition.TLSModeDisabled)},
+		))
 	}
 
 	if tls.Issuer != nil {
 		switch tls.Issuer.Kind {
 		case definition.IssuerKindIssuer, definition.IssuerKindClusterIssuer:
 		default:
-			return fmt.Errorf("issuer.kind must be %s or %s, got %q",
-				definition.IssuerKindIssuer, definition.IssuerKindClusterIssuer, tls.Issuer.Kind)
+			errs = append(errs, field.NotSupported(path.Child("issuer", "kind"), tls.Issuer.Kind,
+				[]string{string(definition.IssuerKindIssuer), string(definition.IssuerKindClusterIssuer)},
+			))
 		}
 	}
 
 	customCertificates := tls.CertificateSecretName != "" || tls.InternalCertificateSecretName != ""
 	switch {
 	case !tlsEnabled(tls.Mode) && (customCertificates || tls.Issuer != nil):
-		return errors.New("certificates and issuer apply only with TLS enabled")
+		errs = append(errs, field.Invalid(path, field.OmitValueType{},
+			"certificates and issuer apply only with TLS enabled"))
 	case tls.InternalCertificateSecretName != "" && tls.CertificateSecretName == "":
-		return errors.New("internalCertificateSecretName requires certificateSecretName")
+		errs = append(errs, field.Required(path.Child("certificateSecretName"),
+			"required when internalCertificateSecretName is set"))
 	case tls.CertificateSecretName != "" && tls.Issuer != nil:
-		return errors.New("use either certificate secrets or an issuer, not both")
+		errs = append(errs, field.Invalid(path, field.OmitValueType{},
+			"use either certificate secrets or an issuer, not both"))
 	}
 
+	return errs
+}
+
+func (p *PXCProvider) ValidateReferences(c *controller.Context) (field.ErrorList, error) {
+	tls, err := tlsParameters(c.Instance())
+	if err != nil {
+		return nil, err
+	}
+	path := field.NewPath("spec", "parameters", "tls")
+
+	var errs field.ErrorList
 	for _, name := range []string{tls.CertificateSecretName, tls.InternalCertificateSecretName} {
 		if name == "" {
 			continue
 		}
-		if err := validateCertificateSecret(c, name); err != nil {
-			return err
+		secretErrs, err := validateCertificateSecret(c, path, name)
+		if err != nil {
+			return nil, err
 		}
+		errs = append(errs, secretErrs...)
 	}
 
-	return validateTLSChange(c, tls)
+	changeErrs, err := validateTLSChange(c, tls, path)
+	if err != nil {
+		return nil, err
+	}
+	errs = append(errs, changeErrs...)
+
+	return errs, nil
 }
 
-func validateCertificateSecret(c *controller.Context, name string) error {
+func validateCertificateSecret(c *controller.Context, path *field.Path, name string) (field.ErrorList, error) {
 	secret := &corev1.Secret{}
 	if err := c.Get(secret, name); err != nil {
-		return fmt.Errorf("get certificate secret %q: %w", name, err)
+		if apierrors.IsNotFound(err) {
+			return field.ErrorList{field.NotFound(path, name)}, nil
+		}
+		return nil, fmt.Errorf("get certificate secret %q: %w", name, err)
 	}
+	var errs field.ErrorList
 	for _, key := range certificateSecretKeys {
 		if len(secret.Data[key]) == 0 {
-			return fmt.Errorf("certificate secret %q is missing %q", name, key)
+			errs = append(errs, field.Invalid(path, name, fmt.Sprintf("secret is missing %q", key)))
 		}
 	}
-	return nil
+	return errs, nil
 }
 
 // validateTLSChange rejects a certificate source change the operator can't
 // apply to an existing cluster: a new certificate source brings a new CA,
 // which members still on the old one wouldn't trust. Turning TLS on or off
 // is left to gateTLSToggle, which the operator can apply safely.
-func validateTLSChange(c *controller.Context, tls definition.TLSParameters) error {
+func validateTLSChange(c *controller.Context, tls definition.TLSParameters, path *field.Path) (field.ErrorList, error) {
 	current := &pxcv1.PerconaXtraDBCluster{}
 	if err := c.Get(current, c.Name()); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil
+			return nil, nil
 		}
-		return fmt.Errorf("fetching current PXC CR: %w", err)
+		return nil, fmt.Errorf("fetching current PXC CR: %w", err)
 	}
 
 	currentIssuer := "/"
@@ -251,16 +278,16 @@ func validateTLSChange(c *controller.Context, tls definition.TLSParameters) erro
 		wantIssuer = string(tls.Issuer.Kind) + "/" + tls.Issuer.Name
 	}
 	if currentIssuer != wantIssuer || current.Spec.SSLSecretName != tls.CertificateSecretName {
-		return errors.New("certificates and issuer can't change on an existing cluster")
+		return field.ErrorList{field.Forbidden(path, "certificates and issuer can't change on an existing cluster")}, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 // tlsConnection returns the CA clients verify the cluster with, and whether
 // clients must use TLS.
 func tlsConnection(c *controller.Context) (ca []byte, required bool, err error) {
-	tls, err := tlsParameters(c)
+	tls, err := tlsParameters(c.Instance())
 	if err != nil || !tlsEnabled(tls.Mode) {
 		return nil, false, err
 	}
