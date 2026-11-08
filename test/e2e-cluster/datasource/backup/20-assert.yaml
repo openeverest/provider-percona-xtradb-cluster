@@ -16,9 +16,9 @@ spec:
     - name: s3
       authModes:
         - AccessKey
-  supportedProviders:
-    - percona-xtradb-cluster
   providerManaged:
+    providerRef:
+      name: percona-xtradb-cluster
     supportsPITR: true
     limits:
       maxPITREnabledStorages: 1
