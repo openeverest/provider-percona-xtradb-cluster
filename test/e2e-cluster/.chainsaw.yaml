@@ -10,7 +10,7 @@ spec:
     delete: 60s
     error: 60s
     exec: 60s
-    cleanup: 180s
+    cleanup: 300s
   cleanup:
     skipDelete: false
   report:

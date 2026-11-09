@@ -1,0 +1,33 @@
+# Single-node + HAProxy is the smallest topology the operator will actually
+# start (see test/e2e-cluster/datasource/backup/30-create-source.yaml).
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-tls
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  topology:
+    type: cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 1
+      storage:
+        size: 1Gi
+      resources:
+        limits:
+          cpu: 600m
+          memory: 1Gi
+        requests:
+          cpu: 600m
+          memory: 1Gi
+    proxy:
+      type: haproxy
+      replicas: 1
+  parameters:
+    tls:
+      # The secret is created by the generate-certificate-and-secret step,
+      # before this file is applied.
+      certificateSecretName: pxc-tls-certs
+

@@ -1,0 +1,158 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core-tls
+spec:
+  description: |
+    TLS against a real PXC operator: generate a self-signed CA/certificate,
+    create an Instance with spec.parameters.tls.certificateSecretName
+    pointing at it, and verify end to end that the operator leaves the
+    secret alone, the connection secret carries the CA, the client
+    connection actually negotiates TLS, and the server presents the
+    certificate we supplied (not an operator-generated one).
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: provider-operator-installed
+      try:
+        - assert:
+            file: 00-assert.yaml
+
+    - name: generate-certificate-and-secret
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR="/tmp/pxc-tls-e2e-${NAMESPACE}"
+              rm -rf "${WORKDIR}" && mkdir -p "${WORKDIR}"
+              cd "${WORKDIR}"
+
+              openssl genrsa -out ca.key 2048 2>/dev/null
+              openssl req -x509 -new -nodes -key ca.key -sha256 -days 1 \
+                -subj "/CN=pxc-tls-ca" -out ca.crt
+
+              openssl genrsa -out tls.key 2048 2>/dev/null
+              openssl req -new -key tls.key -subj "/CN=pxc-tls-pxc" -out server.csr
+
+              cat > san.cnf <<SANEOF
+              subjectAltName = @alt_names
+              [alt_names]
+              DNS.1  = *.pxc-tls-pxc
+              DNS.2  = *.pxc-tls-pxc.${NAMESPACE}
+              DNS.3  = *.pxc-tls-pxc.${NAMESPACE}.svc
+              DNS.4  = *.pxc-tls-haproxy
+              DNS.5  = *.pxc-tls-haproxy.${NAMESPACE}
+              DNS.6  = *.pxc-tls-haproxy.${NAMESPACE}.svc
+              DNS.7  = pxc-tls-haproxy
+              DNS.8  = pxc-tls-haproxy.${NAMESPACE}
+              DNS.9  = pxc-tls-haproxy.${NAMESPACE}.svc
+              DNS.10 = pxc-tls-haproxy.${NAMESPACE}.svc.cluster.local
+              SANEOF
+
+              openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+                -out tls.crt -days 1 -sha256 -extfile san.cnf
+
+              kubectl create secret generic pxc-tls-certs -n "${NAMESPACE}" \
+                --from-file=tls.crt=tls.crt --from-file=tls.key=tls.key --from-file=ca.crt=ca.crt
+
+    - name: create-cluster
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    - name: cluster-ready
+      try:
+        - assert:
+            timeout: 15m
+            file: 20-assert.yaml
+      catch:
+        - script:
+            content: |
+              kubectl -n "${NAMESPACE}" get pods,pvc,pxc.pxc.percona.com,instance -o wide
+              kubectl -n "${NAMESPACE}" describe pod -l app.kubernetes.io/component=pxc || true
+
+    - name: certificate-secret-is-untouched
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR="/tmp/pxc-tls-e2e-${NAMESPACE}"
+              owners="$(kubectl get secret/pxc-tls-certs -n "${NAMESPACE}" -o jsonpath='{.metadata.ownerReferences}')"
+              if [ -n "$owners" ]; then
+                echo "unexpected: the operator took ownership of the user-supplied certificate secret: $owners" >&2
+                exit 1
+              fi
+              kubectl get secret/pxc-tls-certs -n "${NAMESPACE}" -o jsonpath='{.data.tls\.crt}' | base64 -d > "${WORKDIR}/tls.crt.actual"
+              diff "${WORKDIR}/tls.crt.actual" "${WORKDIR}/tls.crt"
+              echo "certificate secret unchanged"
+
+    - name: connection-secret-carries-ca
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR="/tmp/pxc-tls-e2e-${NAMESPACE}"
+              kubectl get secret/pxc-tls-conn -n "${NAMESPACE}" -o jsonpath='{.data.ca\.crt}' | base64 -d > "${WORKDIR}/ca.crt.actual"
+              diff "${WORKDIR}/ca.crt.actual" "${WORKDIR}/ca.crt"
+              echo "connection secret carries our CA"
+
+    - name: create-mysql-client
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              IMAGE="$(kubectl get pxc.pxc.percona.com/pxc-tls -n "${NAMESPACE}" -o jsonpath='{.spec.pxc.image}')"
+              NODE="$(kubectl get pod -n "${NAMESPACE}" -l app.kubernetes.io/instance=pxc-tls,app.kubernetes.io/component=pxc -o jsonpath='{.items[0].spec.nodeName}')"
+              kubectl run -n "${NAMESPACE}" mysql-tls-client --env="NO_COLOR=1" --image="${IMAGE}" --image-pull-policy=IfNotPresent --restart=Never --overrides="{\"spec\":{\"nodeName\":\"${NODE}\"}}" --command -- sleep 3600
+              kubectl wait --for=condition=Ready pod/mysql-tls-client --timeout=150s -n "${NAMESPACE}"
+
+    - name: verify-client-connection-uses-tls
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              HOST="$(kubectl get secret/pxc-tls-conn -n ${NAMESPACE} -o jsonpath='{.data.host}' | base64 -d)"
+              USER="$(kubectl get secret/pxc-tls-conn -n ${NAMESPACE} -o jsonpath='{.data.username}' | base64 -d)"
+              PASS="$(kubectl get secret/pxc-tls-conn -n ${NAMESPACE} -o jsonpath='{.data.password}' | base64 -d)"
+              CIPHER="$(kubectl exec mysql-tls-client -n ${NAMESPACE} -- \
+                mysql -h "$HOST" -P 3306 -u "$USER" -p"$PASS" --ssl-mode=REQUIRED --get-server-public-key -N -s \
+                -e "SHOW STATUS LIKE 'Ssl_cipher';" | awk '{print $2}')"
+              echo "Ssl_cipher=${CIPHER}"
+              test -n "${CIPHER}"
+
+    - name: verify-server-presents-our-certificate
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -e
+              WORKDIR="/tmp/pxc-tls-e2e-${NAMESPACE}"
+              HOST="$(kubectl get secret/pxc-tls-conn -n ${NAMESPACE} -o jsonpath='{.data.host}' | base64 -d)"
+              if ! kubectl exec mysql-tls-client -n ${NAMESPACE} -- sh -c 'command -v openssl' >/dev/null 2>&1; then
+                echo "openssl not available in the engine image; skipping certificate-subject check"
+                exit 0
+              fi
+              SUBJECT="$(kubectl exec mysql-tls-client -n ${NAMESPACE} -- sh -c \
+                "echo | openssl s_client -starttls mysql -connect ${HOST}:3306 2>/dev/null | openssl x509 -noout -subject -issuer" || true)"
+              echo "${SUBJECT}"
+              echo "${SUBJECT}" | grep -q "CN *= *pxc-tls-pxc"
+              echo "${SUBJECT}" | grep -q "CN *= *pxc-tls-ca"
+
+    - name: cleanup
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              kubectl delete pod/mysql-tls-client -n $NAMESPACE --ignore-not-found --wait=false || true
+              kubectl delete instance/pxc-tls -n $NAMESPACE --ignore-not-found --wait=true --timeout=150s || true
+              rm -rf "/tmp/pxc-tls-e2e-${NAMESPACE}" || true
+

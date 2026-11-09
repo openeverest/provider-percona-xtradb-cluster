@@ -61,6 +61,15 @@ func (p *PXCProvider) Validate(in controller.ValidationInput) controller.Validat
 
 	errs = append(errs, validatePITR(instance.Spec.Backup)...)
 
+	tls, err := tlsParameters(instance)
+	if err != nil {
+		errs = append(errs, field.Invalid(
+			field.NewPath("spec", "parameters", "tls"), field.OmitValueType{}, err.Error(),
+		))
+	} else {
+		errs = append(errs, validateTLSParameters(tls, field.NewPath("spec", "parameters", "tls"))...)
+	}
+
 	return controller.ValidationResult{Errors: errs}
 }
 

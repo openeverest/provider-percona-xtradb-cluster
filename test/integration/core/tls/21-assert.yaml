@@ -1,0 +1,12 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-tls
+spec:
+  parameters:
+    tls:
+      certificateSecretName: test-pxc-tls-certs
+status:
+  phase: Ready
+  (conditions[?type == 'Ready'].status | [0]): "True"
+
