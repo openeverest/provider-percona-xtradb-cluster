@@ -16,24 +16,24 @@ package provider
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"maps"
-	"net/url"
 	"regexp"
 	"slices"
 	"strings"
 
+	pmm "github.com/openeverest/monitoring-pmm/api"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	// pmmTokenKey is the key of the PMM server token in the destination's
 	// credentials Secret.
-	pmmTokenKey = "token"
+	pmmTokenKey = pmm.KeyToken
 	// pmmServerTokenKey is where the operator reads the PMM 3 server token
 	// in the users Secret.
 	pmmServerTokenKey = "pmmservertoken"
@@ -114,22 +114,32 @@ func prometheusLabelName(key string) string {
 	return invalidPrometheusLabelChars.ReplaceAllString(key, "_")
 }
 
-func pmmServerHostFromURL(rawURL string) (string, error) {
-	if rawURL == "" {
-		return "", errors.New("url is empty")
+// pmmResourceRequirements converts the resources of a pmm entry's parameters
+// into the container's; nil sets none.
+func pmmResourceRequirements(r *pmm.Resources) *corev1.ResourceRequirements {
+	if r == nil {
+		return nil
 	}
-	if !strings.Contains(rawURL, "://") {
-		return strings.TrimSuffix(rawURL, "/"), nil
-	}
+	return &corev1.ResourceRequirements{Limits: resourceList(r.Limits), Requests: resourceList(r.Requests)}
+}
 
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
+func resourceList(quantities map[string]resource.Quantity) corev1.ResourceList {
+	if quantities == nil {
+		return nil
 	}
-	if u.Host == "" {
-		return "", errors.New("missing host")
+	list := make(corev1.ResourceList, len(quantities))
+	for name, q := range quantities {
+		list[corev1.ResourceName(name)] = q
 	}
-	return u.Host, nil
+	return list
+}
+
+// rawParameters returns the JSON of a parameters field, nil when unset.
+func rawParameters(parameters *runtime.RawExtension) []byte {
+	if parameters == nil {
+		return nil
+	}
+	return parameters.Raw
 }
 
 // syncPMMServerToken mirrors token into the users Secret, where the operator

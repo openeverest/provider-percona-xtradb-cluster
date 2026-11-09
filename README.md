@@ -221,7 +221,10 @@ monitoring extension.
   destination (server `parameters.url`, PMM 3 service account token under `token` in the
   credentials Secret of its `ServiceAccountToken` authentication mode) and the agent image
   of the class. The entry's `parameters.resources` override the PMM client requests sized
-  from the engine memory. Metrics in PMM carry `namespace` and
+  from the engine memory. The destination's and the entry's parameters are decoded with the
+  pmm contract module (`github.com/openeverest/monitoring-pmm/api`): a parameter it does not
+  know, or a url with a path, fails rendering (Configured `RenderFailed`) instead of being
+  ignored. Metrics in PMM carry `namespace` and
   `core_openeverest_io_instance` labels, plus `core_openeverest_io_component=proxy` on
   ProxySQL; HAProxy metrics are not labelled: the operator does not let the provider set
   their `pmm-admin` flags. The operator runs the PMM client with

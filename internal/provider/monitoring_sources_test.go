@@ -219,7 +219,7 @@ func monPMMAuthentication() commonv1alpha1.Authentication {
 }
 
 func monPMMDestination() *monitoringv1alpha1.MonitoringDestination {
-	return monDestination("pmm-prod", "pmm", "https://pmm.example.com:8443/graph", monPMMAuthentication())
+	return monDestination("pmm-prod", "pmm", "https://pmm.example.com:8443", monPMMAuthentication())
 }
 
 func monSecret(name string, data map[string]string) *corev1.Secret {
@@ -655,21 +655,46 @@ func TestPMMRenderFailed(t *testing.T) {
 				return d
 			}(),
 			credentials: monPMMCredentials(),
-			wantMessage: "decode MonitoringDestination pmm-prod parameters",
+			wantMessage: "MonitoringDestination pmm-prod parameters: invalid parameters",
 		},
 		{
 			name:        "destination without url",
 			binding:     monPMMBinding(true, ""),
 			destination: monDestination("pmm-prod", "pmm", "", monPMMAuthentication()),
 			credentials: monPMMCredentials(),
-			wantMessage: "MonitoringDestination pmm-prod parameters.url: url is empty",
+			wantMessage: "MonitoringDestination pmm-prod parameters: invalid parameters: url is required",
 		},
 		{
 			name:        "destination url without host",
 			binding:     monPMMBinding(true, ""),
 			destination: monDestination("pmm-prod", "pmm", "https://", monPMMAuthentication()),
 			credentials: monPMMCredentials(),
-			wantMessage: "MonitoringDestination pmm-prod parameters.url: missing host",
+			wantMessage: `url "https://" must be an http:// or https:// URL`,
+		},
+		{
+			name:        "destination url without scheme",
+			binding:     monPMMBinding(true, ""),
+			destination: monDestination("pmm-prod", "pmm", "pmm.example.com", monPMMAuthentication()),
+			credentials: monPMMCredentials(),
+			wantMessage: `url "pmm.example.com" must be an http:// or https:// URL`,
+		},
+		{
+			name:        "destination url with a path, which the operator has nowhere to put",
+			binding:     monPMMBinding(true, ""),
+			destination: monDestination("pmm-prod", "pmm", "https://pmm.example.com/graph", monPMMAuthentication()),
+			credentials: monPMMCredentials(),
+			wantMessage: `url "https://pmm.example.com/graph" must be an http:// or https:// URL without user information, path, query or fragment`,
+		},
+		{
+			name:    "destination parameter this build does not know",
+			binding: monPMMBinding(true, ""),
+			destination: func() *monitoringv1alpha1.MonitoringDestination {
+				d := monPMMDestination()
+				d.Spec.Parameters = &runtime.RawExtension{Raw: []byte(`{"url":"https://pmm.example.com","serverHost":"pmm"}`)}
+				return d
+			}(),
+			credentials: monPMMCredentials(),
+			wantMessage: `MonitoringDestination pmm-prod parameters: unsupported parameter: unknown field "serverHost"`,
 		},
 		{
 			name:        "destination authentication mode the class does not list",
@@ -701,14 +726,21 @@ func TestPMMRenderFailed(t *testing.T) {
 			binding:     monPMMBinding(true, `{"resources":{"limits":"lots"}}`),
 			destination: monPMMDestination(),
 			credentials: monPMMCredentials(),
-			wantMessage: "decode parameters of destination entry pmm",
+			wantMessage: "parameters of destination entry pmm: invalid parameters",
+		},
+		{
+			name:        "entry parameter this build does not know",
+			binding:     monPMMBinding(true, `{"resources":{"claims":[{"name":"gpu"}]}}`),
+			destination: monPMMDestination(),
+			credentials: monPMMCredentials(),
+			wantMessage: `parameters of destination entry pmm: unsupported parameter: unknown field "claims"`,
 		},
 		{
 			name:        "entry request above its own limit",
 			binding:     monPMMBinding(true, `{"resources":{"requests":{"cpu":"2"},"limits":{"cpu":"1"}}}`),
 			destination: monPMMDestination(),
 			credentials: monPMMCredentials(),
-			wantMessage: "parameters of destination entry pmm: resources.requests.cpu (2) is above resources.limits.cpu (1)",
+			wantMessage: "parameters of destination entry pmm: invalid parameters: resources.requests.cpu 2 exceeds resources.limits.cpu 1",
 		},
 	}
 	for _, tt := range tests {

@@ -15,10 +15,11 @@
 package provider
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 
+	pmm "github.com/openeverest/monitoring-pmm/api"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	monitoringv1alpha1 "github.com/openeverest/openeverest/v2/api/monitoring/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
@@ -31,22 +32,11 @@ import (
 
 // pmmIntegration is the integration declared in definition/monitoring.yaml
 // and matched by the pmm MonitoringClass.
-const pmmIntegration = "pmm"
+const pmmIntegration = pmm.IntegrationName
 
 // haproxyMetricsPort is where the operator's HAProxy serves /metrics.
 const haproxyMetricsPort = 8404
 
-// pmmDestinationParameters is the part of a pmm MonitoringDestination's
-// parameters the provider reads.
-type pmmDestinationParameters struct {
-	URL string `json:"url"`
-}
-
-// pmmEntryParameters is the shape of a pmm entry's parameters in
-// Instance.spec.monitoring.destinations[].
-type pmmEntryParameters struct {
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-}
 
 // MonitoringIntegrations implements controller.MonitoringIntegrationsProvider.
 func (p *PXCProvider) MonitoringIntegrations() []string {
@@ -140,7 +130,7 @@ func applyPMM(c *controller.Context, pxc, live *pxcv1.PerconaXtraDBCluster, requ
 		if !rb.Apply || rb.Integration() != pmmIntegration {
 			continue
 		}
-		pmm, token, err := renderPMM(c, rb)
+		spec, token, err := renderPMM(c, rb)
 		if err != nil {
 			if errors.As(err, new(apierrors.APIStatus)) && !apierrors.IsNotFound(err) {
 				return err
@@ -149,7 +139,7 @@ func applyPMM(c *controller.Context, pxc, live *pxcv1.PerconaXtraDBCluster, requ
 			keepLivePMM(pxc, live)
 			return nil
 		}
-		pxc.Spec.PMM = pmm
+		pxc.Spec.PMM = spec
 		if err := syncPMMServerToken(c, pxc.Spec.SecretsName, token); err != nil {
 			return err
 		}
@@ -170,27 +160,27 @@ func keepLivePMM(pxc, live *pxcv1.PerconaXtraDBCluster) {
 
 // renderPMM builds spec.pmm for an Apply-able pmm binding and returns the PMM
 // server token to mirror. Errors other than API errors describe an input the
-// user has to fix.
+// user has to fix. The parameters are decoded with the pmm contract's strict
+// decoders, so a parameter this build does not know fails rendering instead
+// of being ignored.
 func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMMSpec, []byte, error) {
-	destination := pmmDestinationParameters{}
-	if rb.Destination.Spec.Parameters != nil {
-		if err := json.Unmarshal(rb.Destination.Spec.Parameters.Raw, &destination); err != nil {
-			return nil, nil, fmt.Errorf("decode MonitoringDestination %s parameters: %w", rb.Destination.Name, err)
-		}
+	destination, err := pmm.DecodeDestination(rawParameters(rb.Destination.Spec.Parameters))
+	if err != nil {
+		return nil, nil, fmt.Errorf("MonitoringDestination %s parameters: %w", rb.Destination.Name, err)
 	}
-	serverHost, err := pmmServerHostFromURL(destination.URL)
+	// The decoder accepts only a scheme, a host and a port, which is what the
+	// operator's serverHost takes.
+	server, err := url.Parse(destination.URL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("MonitoringDestination %s parameters.url: %w", rb.Destination.Name, err)
 	}
 
-	entry := pmmEntryParameters{}
-	if rb.Binding.Spec.Parameters != nil {
-		if err := json.Unmarshal(rb.Binding.Spec.Parameters.Raw, &entry); err != nil {
-			return nil, nil, fmt.Errorf("decode parameters of destination entry %s: %w", rb.Entry.Name, err)
-		}
+	entry, err := pmm.DecodeInstance(rawParameters(rb.Binding.Spec.Parameters))
+	if err != nil {
+		return nil, nil, fmt.Errorf("parameters of destination entry %s: %w", rb.Entry.Name, err)
 	}
 
-	resources, err := pmmResources(c.Instance().Spec.Components[common.ComponentEngine].Resources, entry.Resources)
+	resources, err := pmmResources(c.Instance().Spec.Components[common.ComponentEngine].Resources, pmmResourceRequirements(entry.Resources))
 	if err != nil {
 		return nil, nil, fmt.Errorf("parameters of destination entry %s: %w", rb.Entry.Name, err)
 	}
@@ -206,7 +196,7 @@ func renderPMM(c *controller.Context, rb controller.ResolvedBinding) (*pxcv1.PMM
 
 	return &pxcv1.PMMSpec{
 		Enabled:           true,
-		ServerHost:        serverHost,
+		ServerHost:        server.Host,
 		Image:             rb.Class.Spec.ProviderManaged.AgentImage,
 		CustomClusterName: c.Name(),
 		ImagePullPolicy:   corev1.PullIfNotPresent,
