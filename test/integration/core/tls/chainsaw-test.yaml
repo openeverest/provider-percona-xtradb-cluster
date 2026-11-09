@@ -115,22 +115,17 @@ spec:
 
     - name: certificate-secret-and-issuer-together-is-rejected
       try:
-        - apply:
-            file: 31-create-cluster-secret-and-issuer.yaml
+        # Setting a certificate secret and an issuer together is a pure,
+        # Instance-only rule (validateTLSParameters), so the admission
+        # webhook rejects it outright: the Instance is never created.
         - script:
-            content: |
-              kubectl wait instance/test-pxc-tls-bothset -n "$NAMESPACE" \
-                --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=ValidationFailed --timeout=30s
-              if kubectl get pxc.pxc.percona.com/test-pxc-tls-bothset -n "$NAMESPACE" 2>/dev/null; then
-                echo "unexpected: PerconaXtraDBCluster test-pxc-tls-bothset was created despite both certificateSecretName and issuer being set" >&2
-                exit 1
-              fi
-        - assert:
-            file: 31-assert.yaml
-        - script:
-            content: |
-              kubectl -n "$NAMESPACE" delete instance/test-pxc-tls-bothset --ignore-not-found --wait=true
-
+            content: kubectl apply -n $NAMESPACE -f 31-create-cluster-secret-and-issuer.yaml
+            check:
+              ($error != null): true
+              (contains($stderr, 'spec.parameters.tls')): true
+              (contains($stderr, 'use either certificate secrets or an issuer, not both')): true
+        - error:
+            file: 31-error.yaml
 
     - name: delete-cluster
       try:
