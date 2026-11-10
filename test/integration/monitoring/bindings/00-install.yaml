@@ -16,7 +16,7 @@ spec:
       properties:
         url:
           type: string
-          pattern: '^https?://[^/?#@]+([/?#].*)?$'
+          pattern: '^https?://[^/?#@]+/?$'
   authModes:
     - name: ServiceAccountToken
       credentials:

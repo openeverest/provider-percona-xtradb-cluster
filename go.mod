@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/cert-manager/cert-manager v1.20.2
 	github.com/go-ini/ini v1.67.0
+	github.com/openeverest/monitoring-pmm/api v0.0.0-20261110082751-22ff528eb0dc
 	github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261105181435-0223b79fa57d
 	github.com/percona/percona-xtradb-cluster-operator v1.19.1
 	github.com/stretchr/testify v1.12.1
