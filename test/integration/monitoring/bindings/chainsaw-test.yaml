@@ -10,11 +10,12 @@ spec:
     prometheus binding. The provider renders spec.pmm from the first, runs
     the mysqld_exporter sidecar for the second and, once the cluster is
     Ready, publishes the exporter and HAProxy endpoints. Dropping the
-    prometheus entry removes the sidecar, deleting the pmm destination keeps
-    the live spec.pmm, and dropping the pmm entry disables PMM. No extension
-    controller runs here, so the classes are claimed by hand and the
-    prometheus binding is never Configured; the Percona operator is scaled
-    to 0.
+    prometheus entry removes the sidecar, deleting the pmm destination is
+    refused while the Instance lists it, a pmm destination that disappears
+    anyway leaves the live spec.pmm, and dropping the pmm entry disables
+    PMM. No extension controller runs here, so the classes are claimed by
+    hand and the prometheus binding is never Configured; the Percona
+    operator is scaled to 0.
   catch:
     - script:
         content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com,monitoringdestination,monitoringbinding,secret -o yaml
@@ -83,13 +84,36 @@ spec:
         - error:
             file: 20-errors.yaml
 
+    # Core refuses deleting a destination an Instance lists. Force it through
+    # (a deletion admitted on a stale count, then the in-use finalizer
+    # removed) to cover a destination that disappears anyway.
     - name: delete-pmm-destination
       try:
-        - delete:
-            ref:
+        - assert:
+            resource:
               apiVersion: monitoring.openeverest.io/v1alpha1
               kind: MonitoringDestination
-              name: pmm-it
+              metadata:
+                name: pmm-it
+              status:
+                attachedInstances: 1
+        - script:
+            content: kubectl -n $NAMESPACE delete monitoringdestination/pmm-it --wait=false
+            check:
+              ($error != null): true
+              (contains($stderr, 'in use by 1 database')): true
+        - script:
+            content: |
+              set -e
+              kubectl -n $NAMESPACE patch monitoringdestination/pmm-it --subresource=status --type=merge -p '{"status":{"attachedInstances":0}}'
+              kubectl -n $NAMESPACE delete monitoringdestination/pmm-it --wait=false
+              kubectl -n $NAMESPACE patch monitoringdestination/pmm-it --type=merge -p '{"metadata":{"finalizers":null}}'
+        - error:
+            resource:
+              apiVersion: monitoring.openeverest.io/v1alpha1
+              kind: MonitoringDestination
+              metadata:
+                name: pmm-it
         - assert:
             file: 30-assert.yaml
 
