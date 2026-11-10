@@ -5,6 +5,7 @@ kind: MonitoringClass
 metadata:
   name: pmm-it
 spec:
+  controllerName: test.openeverest.io/provider-percona-xtradb-cluster-it
   providerManaged:
     integration: pmm
     agentImage: percona/pmm-client:3.8.0
@@ -43,6 +44,7 @@ kind: MonitoringClass
 metadata:
   name: prometheus-it
 spec:
+  controllerName: test.openeverest.io/provider-percona-xtradb-cluster-it
   extensionManaged:
     requires:
       metrics: true
