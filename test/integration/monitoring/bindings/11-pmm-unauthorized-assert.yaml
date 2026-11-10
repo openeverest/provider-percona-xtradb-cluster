@@ -1,0 +1,30 @@
+# The pmm server rejects the token. The entry stays Configured, since the
+# configuration was handed to pmm-client, but it is not Ready, and neither
+# is the Instance's monitoring. The binding says the same.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+status:
+  monitoring:
+    (destinations[?name == 'pmm'] | [0]):
+      (conditions[?type == 'Configured'] | [0]):
+        status: "True"
+      (conditions[?type == 'Ready'] | [0]):
+        status: "False"
+        reason: DestinationNotReady
+        message: 'MonitoringDestination "pmm-it" is not Ready (Unauthorized)'
+  (conditions[?type == 'MonitoringReady'] | [0]):
+    status: "False"
+    reason: MonitoringNotReady
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+    monitoring.openeverest.io/entry: pmm
+status:
+  (conditions[?type == 'Ready'] | [0]):
+    status: "False"
+    reason: DestinationNotReady

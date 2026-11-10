@@ -92,7 +92,12 @@ status:
   monitoring:
     (destinations[?name == 'pmm'] | [0]):
       mode: ProviderManaged
-      configured: "True"
-      reason: AgentTLSNotVerified
+      (conditions[?type == 'Configured'] | [0]):
+        status: "True"
+        reason: AgentTLSNotVerified
+      # No extension probes pmm-it here, so its Ready stays Pending.
+      (conditions[?type == 'Ready'] | [0]):
+        status: Unknown
+        reason: Pending
     (destinations[?name == 'prometheus'] | [0]):
       mode: ExtensionManaged

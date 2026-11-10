@@ -1,0 +1,23 @@
+# The pmm server accepts the token again: the entry and its binding are
+# Ready.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-bindings
+status:
+  monitoring:
+    (destinations[?name == 'pmm'] | [0]):
+      (conditions[?type == 'Ready'] | [0]):
+        status: "True"
+        reason: Ready
+---
+apiVersion: monitoring.openeverest.io/v1alpha1
+kind: MonitoringBinding
+metadata:
+  labels:
+    core.openeverest.io/instance: pxc-bindings
+    monitoring.openeverest.io/entry: pmm
+status:
+  (conditions[?type == 'Ready'] | [0]):
+    status: "True"
+    reason: Ready
