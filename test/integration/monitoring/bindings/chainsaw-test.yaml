@@ -44,12 +44,13 @@ spec:
         - apply:
             file: 00-install.yaml
         # Stand in for the extension controllers: a class is usable only once
-        # its controller has claimed it.
+        # its controller has claimed it at its current generation.
         - script:
             content: |
               for class in pmm-it prometheus-it; do
+                gen=$(kubectl get monitoringclass/$class -o jsonpath='{.metadata.generation}')
                 kubectl patch monitoringclass/$class --subresource status --type merge \
-                  -p '{"status":{"conditions":[{"type":"Accepted","status":"True","reason":"Accepted","message":"claimed by the test","lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
+                  -p '{"status":{"conditions":[{"type":"Accepted","status":"True","reason":"Accepted","message":"claimed by the test","observedGeneration":'"$gen"',"lastTransitionTime":"2026-01-01T00:00:00Z"}]}}'
               done
         - assert:
             file: 00-assert.yaml

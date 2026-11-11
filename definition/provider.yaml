@@ -23,3 +23,12 @@ components:
     parametersSchema: ProxyParameters
   backup:
     type: backup
+
+# Component types: the kind of the software each type runs, published as
+# Provider.spec.componentTypes.<type>.kind and matched by monitoring classes.
+# Version catalogs stay in versions.yaml.
+componentTypes:
+  pxc:
+    kind: mysql
+  haproxy:
+    kind: haproxy

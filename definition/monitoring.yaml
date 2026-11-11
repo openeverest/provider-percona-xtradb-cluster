@@ -4,16 +4,15 @@
 #
 # integrations: operator-native integrations rendered in Sync (ProviderManaged).
 # componentTypes: keyed by a component type from provider.yaml, what each type
-# exposes to ExtensionManaged classes. pxc runs a mysqld_exporter sidecar on
-# demand; HAProxy serves its own /metrics.
+# exposes to ExtensionManaged classes (its kind is declared in provider.yaml).
+# pxc runs a mysqld_exporter sidecar on demand; HAProxy serves its own
+# /metrics.
 integrations:
   pmm:
     agentVersions: ">=3.0.0 <4.0.0"
     authModes: [ServiceAccountToken]
 componentTypes:
   pxc:
-    kind: mysql
     metrics: Exporter
   haproxy:
-    kind: haproxy
     metrics: Native

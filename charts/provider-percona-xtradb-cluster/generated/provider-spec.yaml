@@ -13,6 +13,7 @@ spec:
           version: 8.4.0-5.1
     haproxy:
       defaultVersion: 2.8.18-1
+      kind: haproxy
       versions:
         - image: percona/haproxy:2.8.18-1
           version: 2.8.18-1
@@ -28,6 +29,7 @@ spec:
           version: 2.7.3-1.3
     pxc:
       defaultVersion: 8.4.8-8.1
+      kind: mysql
       versions:
         - image: percona/percona-xtradb-cluster:5.7.34-31.51
           version: 5.7.34-31.51
@@ -92,10 +94,8 @@ spec:
   monitoring:
     componentTypes:
       haproxy:
-        kind: haproxy
         metrics: Native
       pxc:
-        kind: mysql
         metrics: Exporter
     integrations:
       pmm:
