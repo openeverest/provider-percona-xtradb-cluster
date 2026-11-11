@@ -9,8 +9,9 @@ spec:
     materialises a ProviderManaged pmm binding and an ExtensionManaged
     prometheus binding. The provider renders spec.pmm from the first, runs
     the mysqld_exporter sidecar for the second and, once the cluster is
-    Ready, publishes the exporter and HAProxy endpoints. Dropping the
-    prometheus entry removes the sidecar, deleting the pmm destination is
+    Ready, publishes the exporter and HAProxy endpoints. A pmm destination
+    that rejects its token leaves the pmm entry Configured but not Ready.
+    Dropping the prometheus entry removes the sidecar, deleting the pmm destination is
     refused while the Instance lists it, a pmm destination that disappears
     anyway leaves the live spec.pmm, and dropping the pmm entry disables
     PMM. No extension controller runs here, so the classes are claimed by
@@ -75,6 +76,32 @@ spec:
             file: 11-assert.yaml
         - error:
             file: 11-errors.yaml
+
+    # Stand in for the pmm extension's probe: the server rejects the token.
+    - name: pmm-destination-rejects-the-token
+      try:
+        - script:
+            content: |
+              set -e
+              gen=$(kubectl get monitoringdestination/pmm-it -n $NAMESPACE -o jsonpath='{.metadata.generation}')
+              patch=$(kubectl get monitoringdestination/pmm-it -n $NAMESPACE -o json | jq -c --argjson gen "$gen" \
+                '{status: {conditions: ([.status.conditions[]? | select(.type != "Ready")] + [{type: "Ready", status: "False", reason: "Unauthorized", message: "probed by the test", observedGeneration: $gen, lastTransitionTime: "2026-01-01T00:00:00Z"}])}}')
+              kubectl patch monitoringdestination/pmm-it -n $NAMESPACE --subresource status --type merge -p "$patch"
+        - assert:
+            file: 11-pmm-unauthorized-assert.yaml
+
+    # The token is replaced and the probe succeeds.
+    - name: pmm-destination-accepts-the-token
+      try:
+        - script:
+            content: |
+              set -e
+              gen=$(kubectl get monitoringdestination/pmm-it -n $NAMESPACE -o jsonpath='{.metadata.generation}')
+              patch=$(kubectl get monitoringdestination/pmm-it -n $NAMESPACE -o json | jq -c --argjson gen "$gen" \
+                '{status: {conditions: ([.status.conditions[]? | select(.type != "Ready")] + [{type: "Ready", status: "True", reason: "Ready", message: "probed by the test", observedGeneration: $gen, lastTransitionTime: "2026-01-01T00:00:00Z"}])}}')
+              kubectl patch monitoringdestination/pmm-it -n $NAMESPACE --subresource status --type merge -p "$patch"
+        - assert:
+            file: 11-pmm-ready-assert.yaml
 
     - name: drop-prometheus-entry
       try:

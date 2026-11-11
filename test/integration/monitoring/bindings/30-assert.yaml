@@ -35,6 +35,11 @@ metadata:
 status:
   monitoring:
     (destinations[?name == 'pmm'] | [0]):
-      configured: "False"
-      reason: DestinationNotFound
+      (conditions[?type == 'Configured'] | [0]):
+        status: "False"
+        reason: DestinationNotFound
+      (conditions[?type == 'Ready'] | [0]):
+        status: "False"
+        reason: NotAccepted
   (conditions[?type == 'MonitoringConfigured'].status | [0]): "False"
+  (conditions[?type == 'MonitoringReady'].status | [0]): "False"
