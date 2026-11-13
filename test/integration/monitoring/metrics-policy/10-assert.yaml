@@ -1,0 +1,23 @@
+# The exporter sidecar runs although the Instance has no destination.
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-metrics-policy
+spec:
+  pxc:
+    sidecars:
+      - name: mysqld-exporter
+        ports:
+          - name: metrics
+            containerPort: 9104
+---
+# The CRD keeps the policy rather than pruning it.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-metrics-policy
+spec:
+  monitoring:
+    sources:
+      metrics:
+        policy: Always
