@@ -1,0 +1,73 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: monitoring-metrics-policy
+spec:
+  description: |
+    spec.monitoring.sources.metrics.policy: Always runs the mysqld_exporter
+    sidecar without any monitoring destination, and once the cluster is Ready
+    the provider publishes the exporter's endpoint next to HAProxy's for a
+    scraper OpenEverest does not configure. Back on OnDemand nothing needs
+    metrics, so the sidecar and its endpoint go. The Percona operator is
+    scaled to 0.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: setup
+      try:
+        - script:
+            content: |
+              kubectl -n provider-system scale deployment/provider-percona-xtradb-cluster-operator --replicas=0
+              kubectl -n provider-system wait --for=jsonpath='{.spec.replicas}'=0 deployment/provider-percona-xtradb-cluster-operator --timeout=60s
+              # Operator-created webhook has no endpoints once scaled to 0.
+              kubectl delete validatingwebhookconfiguration percona-xtradbcluster-webhook --ignore-not-found
+
+    - name: create-cluster-with-metrics-always
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    # Simulate the PXC operator marking the cluster ready: the provider
+    # publishes metrics endpoints only for a serving cluster.
+    - name: cluster-ready
+      try:
+        - script:
+            content: |
+              GEN=$(kubectl get pxc.pxc.percona.com/pxc-metrics-policy -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/pxc-metrics-policy --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"pxc-metrics-policy-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":3,\"ready\":3,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 11-assert.yaml
+
+    - name: back-to-on-demand
+      try:
+        - apply:
+            file: 20-on-demand.yaml
+        - assert:
+            file: 20-assert.yaml
+
+    - name: delete-cluster
+      try:
+        - script:
+            content: |
+              kubectl -n $NAMESPACE delete instance/pxc-metrics-policy pxc.pxc.percona.com/pxc-metrics-policy --wait=false --ignore-not-found && sleep 5
+              kubectl -n $NAMESPACE patch pxc.pxc.percona.com/pxc-metrics-policy -p '{"metadata":{"finalizers":null}}' --type merge || true
+        - wait:
+            apiVersion: core.openeverest.io/v1alpha1
+            kind: Instance
+            name: pxc-metrics-policy
+            for:
+              deletion: {}
+        - wait:
+            apiVersion: pxc.percona.com/v1
+            kind: PerconaXtraDBCluster
+            name: pxc-metrics-policy
+            for:
+              deletion: {}
