@@ -87,7 +87,7 @@ spec:
         - script:
             content: |
               kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
-                --for=jsonpath='{.spec.haproxy.exposePrimary.type}'=LoadBalancer --timeout=30s
+                --for=jsonpath='{.spec.pxc.expose.type}'=LoadBalancer --timeout=30s
               GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
               kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
                 -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
@@ -101,7 +101,7 @@ spec:
         - script:
             content: |
               kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
-                --for=jsonpath='{.spec.haproxy.exposePrimary.type}'=ClusterIP --timeout=30s
+                --for=jsonpath='{.spec.pxc.expose.type}'=ClusterIP --timeout=30s
               GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
               kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
                 -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
@@ -115,7 +115,7 @@ spec:
         - script:
             content: |
               kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
-                --for=jsonpath='{.spec.haproxy.exposePrimary.type}'=NodePort --timeout=30s
+                --for=jsonpath='{.spec.pxc.expose.type}'=NodePort --timeout=30s
               GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
               kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
                 -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
@@ -135,6 +135,20 @@ spec:
                 -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
         - assert:
             file: 25-assert.yaml
+
+    - name: update-proxy-service-independent-of-engine
+      try:
+        - apply:
+            file: 26-update-cluster-proxy-lb.yaml
+        - script:
+            content: |
+              kubectl wait pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" \
+                --for=jsonpath='{.spec.haproxy.exposePrimary.type}'=LoadBalancer --timeout=30s
+              GEN=$(kubectl get pxc.pxc.percona.com/test-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/test-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN},\"state\":\"ready\",\"host\":\"test-pxc-cluster-haproxy.${NAMESPACE}.svc.cluster.local\",\"pxc\":{\"size\":5,\"ready\":5,\"status\":\"ready\"},\"haproxy\":{\"size\":1,\"ready\":1,\"status\":\"ready\"}}}"
+        - assert:
+            file: 26-assert.yaml
 
     - name: create-single-node-cluster
       try:

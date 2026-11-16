@@ -24,8 +24,7 @@ metadata:
 spec:
   pxc:
     size: 5
-  haproxy:
-    exposePrimary:
+    expose:
       type: ClusterIP
 status:
   state: ready

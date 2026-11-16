@@ -158,9 +158,27 @@ ui:
             multiline: true
             minRows: 3
             maxRows: 8
+        proxyExposure:
+          uiType: select
+          path: spec.components.proxy.service.serviceType
+          fieldParams:
+            label: "Exposure"
+            helperText: "How clients reach the cluster through the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster."
+            defaultValue: "ClusterIP"
+            options:
+              - label: "ClusterIP"
+                value: "ClusterIP"
+              - label: "LoadBalancer"
+                value: "LoadBalancer"
+              - label: "NodePort"
+                value: "NodePort"
+            # TODO: Support Service annotations and LoadBalancer source ranges
+            # https://github.com/openeverest/openeverest/issues/1959
+            # https://github.com/openeverest/openeverest/issues/2398
       componentsOrder:
         - proxyType
         - proxyNodes
+        - proxyExposure
         - proxyConfiguration
     tls:
       label: "TLS"
@@ -332,10 +350,30 @@ ui:
               widgetType: podSchedulingPolicy
           componentsOrder:
             - policy
+        engineExposure:
+          uiType: select
+          path: spec.components.engine.service.serviceType
+          fieldParams:
+            label: "Direct database exposure"
+            helperText: "How clients reach the engine nodes directly, bypassing the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster. Most clients should go through the proxy instead; this is for clients that need a direct connection to a specific node."
+            defaultValue: "ClusterIP"
+            options:
+              - label: "ClusterIP"
+                value: "ClusterIP"
+              - label: "LoadBalancer"
+                value: "LoadBalancer"
+              - label: "NodePort"
+                value: "NodePort"
+            # TODO: Support Service annotations and LoadBalancer source ranges
+            # https://github.com/openeverest/openeverest/issues/1959
+            # https://github.com/openeverest/openeverest/issues/2398
+          validation:
+            required: true
       componentsOrder:
         - storageClass
         - configuration
         - podSchedulingPolicy
+        - engineExposure
   sectionsOrder:
     - databaseVersion
     - resources
