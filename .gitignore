@@ -8,6 +8,9 @@
 *.so
 *.dylib
 
+# Makefile LOCALBIN: tools are installed per platform and bin/provider is a build output
+/bin/
+
 # Test binary, built with `go test -c`
 *.test
 
