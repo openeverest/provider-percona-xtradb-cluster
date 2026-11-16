@@ -12,7 +12,9 @@ import (
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	common "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	s3class "github.com/openeverest/openeverest/v2/backupstorageclasses/s3"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/definition/backupclasses"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +30,10 @@ const (
 	backupTypeCron                = "cron"
 	defaultPITRTimeBetweenUploads = 60.0
 	defaultPITRTimeoutSeconds     = 3600.0
+
+	// backupClassName is the BackupClass the provider ships, defined in
+	// definition/backupclasses.
+	backupClassName = "pxc"
 )
 
 // Mirror implements controller.BackupMirror (optional). The runtime invokes
@@ -282,7 +288,7 @@ func renderBackupStorage(c *controller.Context, s controller.ResolvedBackupStora
 	if err != nil {
 		return nil, err
 	}
-	tls, err := c.BackupStorageTLS(s.Storage, controller.TLSSupport{CustomCA: true, SkipVerify: true})
+	tls, err := c.BackupStorageTLS(s.Storage, backupclasses.TLSSupport(backupClassName, s3class.ClassName))
 	if err != nil {
 		return nil, err
 	}

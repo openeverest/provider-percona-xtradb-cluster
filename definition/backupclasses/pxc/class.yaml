@@ -1,12 +1,15 @@
 # Pxc BackupClass definition.
 # This file is the source of truth for the generated BackupClass manifest.
 #
+# provider-sdk generate makes the class ProviderManaged and names this
+# provider in providerManaged.providerRef: the provider claims and executes it.
+#
 # Fields:
 #   displayName/description: human-readable metadata.
-#   supportedProviders: providers this class can be used with.
-#   executionMode: "ProviderManaged" (operator-native) or "Job".
-#   backupStorageClasses: the BackupStorageClasses this class can write to,
-#     each with the authentication modes it supports. Required.
+#   backupStorageClasses: BackupStorageClasses the engine writes to, with their
+#     auth modes, the parameters it supports (parametersSchema narrows the
+#     storage class's schema) and the spec.tls settings it honours (tls).
+#     Required.
 #   providerManaged.supportsPITR: advertise PITR capability to Restore validation.
 #   providerManaged.limits: caps the runtime enforces against Instance.spec.backup.
 #     maxStorages, maxPITREnabledStorages, maxSchedulesPerStorage — unset means unlimited.
@@ -24,13 +27,16 @@ backupStorageClasses:
     - name: s3
       authModes:
         - AccessKey
+      tls:
+        # s3.caBundle and verifyTLS on the PXC operator's backup storage.
+        customCA: Supported
+        insecureSkipVerify: Supported
 parametersSchema:
     openAPIV3Schema: PxcBackupConfig
 description:  |
   BackupClass for MySQL based on Percona XtraDB Cluster provider. Backups are managed
   PXC operator; OpenEverest does not run any side-car Job for this class.
 displayName: "Percona Backup for MySQL based on Percona XtraDB Cluster"
-executionMode: ProviderManaged
 providerManaged:
     limits:
       maxPITREnabledStorages: 1
@@ -39,5 +45,3 @@ providerManaged:
     supportsPITR: true
 restoreParametersSchema:
     openAPIV3Schema: PxcRestoreConfig
-supportedProviders:
-    - percona-xtradb-cluster
