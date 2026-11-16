@@ -68,6 +68,24 @@ spec:
             This struct is converted to OpenAPI schema and served via the /schema endpoint.
             Provider users can specify these fields in the Instance's component parameters.
           properties:
+            bootstrap:
+              description: Bootstrap configures where a new instance's data comes from.
+              properties:
+                volumeSnapshot:
+                  description: |-
+                    VolumeSnapshot starts the instance from a VolumeSnapshot of another
+                    instance's data volume, in the same namespace. The snapshot must be
+                    annotated provider-percona-xtradb-cluster.openeverest.io/bootstrap-instance
+                    with this instance's name. Immutable once the instance is created.
+                  properties:
+                    name:
+                      description: Name of the VolumeSnapshot.
+                      minLength: 1
+                      type: string
+                  required:
+                    - name
+                  type: object
+              type: object
             configuration:
               description: |-
                 Configuration is the raw my.cnf-style engine configuration file content.

@@ -13,6 +13,7 @@ rules:
   - ""
   resources:
   - namespaces
+  - persistentvolumeclaims
   verbs:
   - get
 - apiGroups:
@@ -169,5 +170,11 @@ rules:
   - perconaxtradbclusterbackups/status
   - perconaxtradbclusterrestores/status
   - perconaxtradbclusters/status
+  verbs:
+  - get
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
   verbs:
   - get

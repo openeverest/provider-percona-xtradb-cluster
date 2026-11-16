@@ -30,6 +30,26 @@ type PXCParameters struct {
 	// `configuration` is the conventional property name for the engine
 	// configuration file inside a component's parameters schema.
 	Configuration string `json:"configuration,omitempty"`
+	// Bootstrap configures where a new instance's data comes from.
+	// +optional
+	Bootstrap *BootstrapParameters `json:"bootstrap,omitempty"`
+}
+
+// BootstrapParameters configures the data a new instance starts with.
+type BootstrapParameters struct {
+	// VolumeSnapshot starts the instance from a VolumeSnapshot of another
+	// instance's data volume, in the same namespace. The snapshot must be
+	// annotated provider-percona-xtradb-cluster.openeverest.io/bootstrap-instance
+	// with this instance's name. Immutable once the instance is created.
+	// +optional
+	VolumeSnapshot *VolumeSnapshotSource `json:"volumeSnapshot,omitempty"`
+}
+
+// VolumeSnapshotSource names a VolumeSnapshot.
+type VolumeSnapshotSource struct {
+	// Name of the VolumeSnapshot.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
 }
 
 // ProxyParameters defines custom parameters for proxy components.

@@ -359,6 +359,10 @@ func SyncPXC(c *controller.Context) error {
 		}
 	}
 
+	if err := applyVolumeSnapshotBootstrap(c, pxc); err != nil {
+		return err
+	}
+
 	if err := c.Apply(pxc); err != nil {
 		return err
 	}

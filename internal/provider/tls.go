@@ -236,6 +236,12 @@ func (p *PXCProvider) ValidateReferences(c *controller.Context) (field.ErrorList
 	}
 	errs = append(errs, changeErrs...)
 
+	snapshotErrs, err := validateVolumeSnapshotReference(c)
+	if err != nil {
+		return nil, err
+	}
+	errs = append(errs, snapshotErrs...)
+
 	return errs, nil
 }
 

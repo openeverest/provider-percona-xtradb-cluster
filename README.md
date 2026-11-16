@@ -78,6 +78,7 @@ Stateful workloads additionally report:
 | Backups (scheduled) | ✅ | per-storage schedules on `spec.backup.storages[].schedules[]` |
 | Point-in-time recovery | ✅ | one storage may enable PITR |
 | Restore | ✅ | in place, and into a new Instance via `spec.dataSource` |
+| Start from a VolumeSnapshot | ✅ | `bootstrap.volumeSnapshot` engine parameter, for tools such as the Branching plugin — see [Starting from a VolumeSnapshot](#starting-from-a-volumesnapshot) |
 
 ## Installation
 
@@ -209,6 +210,7 @@ The technology-specific knobs worth knowing about:
 | Parameter | Applies to | Purpose |
 |---|---|---|
 | `configuration` | `engine` | Raw `my.cnf` configuration passed to the operator |
+| `bootstrap.volumeSnapshot` | `engine` | Start a new instance from a VolumeSnapshot — see [Starting from a VolumeSnapshot](#starting-from-a-volumesnapshot) |
 | `tls` | instance-wide (`spec.parameters.tls`) | TLS mode and certificate source — see [TLS](#tls) |
 
 ### Monitoring
@@ -276,6 +278,39 @@ spec:
 - **Clients** authenticate with their password and need only the CA to verify the cluster:
   the connection secret (`<instance>-conn`) carries it as `ca.crt`, and its `uri` sets `tls`
   to match the mode.
+
+### Starting from a VolumeSnapshot
+
+A new Instance can start from a CSI `VolumeSnapshot` of another PXC instance's data volume
+(`datadir-<instance>-pxc-<n>`) in the same namespace, instead of from a backup. It is meant
+for tools such as the [Branching plugin](https://github.com/solanicaio/plugin-branching),
+which give copy-on-write branches in seconds on a StorageClass that snapshots cheaply:
+
+```yaml
+spec:
+  components:
+    engine:
+      parameters:
+        bootstrap:
+          volumeSnapshot:
+            name: src-snap
+```
+
+- **Authorization:** the snapshot must be annotated
+  `provider-percona-xtradb-cluster.openeverest.io/bootstrap-instance: <instance>`. Everest
+  users can't annotate snapshots, so only whoever can, such as the plugin, lets an Instance
+  start from one. Without it the Instance is rejected.
+- **Data volumes:** the snapshot is the `dataSource` of the cluster's volume claim template,
+  so every node starts from it; nodes after the first then rejoin the cluster from it. A
+  snapshot taken of a running node starts like after a crash: the operator's full-crash
+  recovery bootstraps the cluster from it, usually within a minute.
+- **Passwords:** the data holds the source's system users. Before creating the cluster the
+  provider copies the source's `internal-<source>` Secret to `internal-<instance>` (a Secret
+  already there, such as one with the passwords as of the snapshot, is kept). The operator
+  then generates the instance's own passwords in `everest-secrets-<instance>` and changes
+  them, so the new instance doesn't share its source's.
+- The parameter can't be combined with `spec.dataSource` and can't change once the instance
+  is created.
 
 ## Development
 
