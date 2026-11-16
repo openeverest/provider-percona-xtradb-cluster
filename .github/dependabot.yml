@@ -1,0 +1,30 @@
+# The Percona Operator for MySQL based on Percona XtraDB Cluster is pinned twice:
+# as a Go module (its API types, in go.mod) and as the bundled Helm subchart
+# (charts/provider-percona-xtradb-cluster/Chart.yaml). Both are placed in one
+# multi-ecosystem group so a new operator release arrives as a single PR that
+# bumps them together.
+version: 2
+
+multi-ecosystem-groups:
+  pxc-operator:
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    allow:
+      - dependency-name: "github.com/percona/percona-xtradb-cluster-operator"
+    patterns:
+      - "github.com/percona/percona-xtradb-cluster-operator"
+    multi-ecosystem-group: "pxc-operator"
+
+  - package-ecosystem: "helm"
+    directory: "/charts/provider-percona-xtradb-cluster"
+    allow:
+      - dependency-name: "pxc-operator"
+    patterns:
+      - "pxc-operator"
+    multi-ecosystem-group: "pxc-operator"
