@@ -327,7 +327,7 @@ spec:
             proxyExposure:
               fieldParams:
                 defaultValue: ClusterIP
-                helperText: How clients reach the cluster through the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster.
+                helperText: How clients reach the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster. For NodePort, see https://openeverest.io/docs/current/networking/nodeport_support/ for how to access your database.
                 label: Exposure
                 options:
                   - label: ClusterIP
