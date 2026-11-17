@@ -163,7 +163,7 @@ ui:
           path: spec.components.proxy.service.serviceType
           fieldParams:
             label: "Exposure"
-            helperText: "How clients reach the cluster through the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster."
+            helperText: "How clients reach the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster. For NodePort, see https://openeverest.io/docs/current/networking/nodeport_support/ for how to access your database."
             defaultValue: "ClusterIP"
             options:
               - label: "ClusterIP"
