@@ -380,11 +380,34 @@ func TestMetricsExporterFollowsRequiredSources(t *testing.T) {
 	pmmEntry := []corev1alpha1.InstanceMonitoringDestination{monEntry("pmm", "pmm-prod")}
 
 	tests := []struct {
-		name    string
-		entries []corev1alpha1.InstanceMonitoringDestination
-		objs    []client.Object
-		want    bool
+		name          string
+		entries       []corev1alpha1.InstanceMonitoringDestination
+		metricsPolicy corev1alpha1.MonitoringSourcePolicy
+		objs          []client.Object
+		want          bool
 	}{
+		{
+			name:          "the Always metrics policy without destinations",
+			metricsPolicy: corev1alpha1.MonitoringSourcePolicyAlways,
+			objs:          []client.Object{monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false)},
+			want:          true,
+		},
+		{
+			name:          "the Always metrics policy with only PMM bound",
+			entries:       pmmEntry,
+			metricsPolicy: corev1alpha1.MonitoringSourcePolicyAlways,
+			objs: []client.Object{
+				monPMMBinding(true, ""), monPMMDestination(), monPMMClass(), monPMMCredentials(),
+				monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, true),
+			},
+			want: true,
+		},
+		{
+			name:          "the OnDemand metrics policy without destinations",
+			metricsPolicy: corev1alpha1.MonitoringSourcePolicyOnDemand,
+			objs:          []client.Object{monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, true, false)},
+			want:          false,
+		},
 		{
 			name:    "a bound class requires metrics",
 			entries: prometheusEntry,
@@ -422,6 +445,14 @@ func TestMetricsExporterFollowsRequiredSources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := monitoringContext(t, tt.entries, tt.objs...)
+			if tt.metricsPolicy != "" {
+				c.Instance().Spec.Monitoring = &corev1alpha1.InstanceMonitoringSpec{
+					Destinations: tt.entries,
+					Sources: &corev1alpha1.InstanceMonitoringSources{
+						Metrics: &corev1alpha1.InstanceMetricsSource{Policy: tt.metricsPolicy},
+					},
+				}
+			}
 			pxc := monDesiredPXC()
 
 			require.NoError(t, applyMonitoring(c, pxc, &monTestProviderSpec))

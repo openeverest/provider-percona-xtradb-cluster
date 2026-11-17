@@ -1,0 +1,18 @@
+# Nothing requires metrics any more: the sidecar and its endpoint go,
+# HAProxy's own endpoint stays.
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-metrics-policy
+spec:
+  pxc:
+    (sidecars == null): true
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-metrics-policy
+status:
+  monitoring:
+    (length(sources.metrics)): 1
+    (sources.metrics[0].component): proxy

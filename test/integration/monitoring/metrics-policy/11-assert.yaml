@@ -1,0 +1,22 @@
+# Once the cluster serves, the provider publishes where the exporter and
+# HAProxy listen, for the user's own scraper.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-metrics-policy
+status:
+  monitoring:
+    (destinations == null): true
+    sources:
+      (length(metrics)): 2
+      (metrics[?component == 'engine'] | [0]):
+        kind: mysql
+        podSelector:
+          core.openeverest.io/instance: pxc-metrics-policy
+          core.openeverest.io/component: engine
+        port: metrics
+        path: /metrics
+        scheme: http
+      (metrics[?component == 'proxy'] | [0]):
+        kind: haproxy
+        port: 8404
