@@ -66,6 +66,7 @@ provider itself is covered under [Installation](#installation).
 | Vertical scaling (CPU / memory) | ✅ | `spec.components.<name>.resources` |
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
+| Exposure | ✅ | `spec.components.<name>.service.serviceType`: `ClusterIP` (default), `LoadBalancer` or `NodePort`, for `engine` and `proxy` independently. `proxy.service` controls how clients reach HAProxy/ProxySQL and is how most clients should connect; `engine.service` exposes the PXC members' own Service directly, bypassing the proxy, for clients that need a direct connection to a specific node. `service.annotations` and, for `LoadBalancer`, `service.loadBalancerService.sourceRanges` are also supported on both, but only via the `Instance` spec directly — the UI doesn't expose them yet ([openeverest#1959](https://github.com/openeverest/openeverest/issues/1959), [openeverest#2398](https://github.com/openeverest/openeverest/issues/2398)) |
 | Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints for other monitoring classes, see [Monitoring](#monitoring) |
 | TLS | ✅ | on by default; generated, cert-manager or your own certificates — see [TLS](#tls) |
 

@@ -30,8 +30,7 @@ metadata:
 spec:
   pxc:
     size: 5
-  haproxy:
-    exposePrimary:
+    expose:
       type: LoadBalancer
       annotations:
         test-annotation: "test-value"

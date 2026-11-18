@@ -712,15 +712,28 @@ func proxyConfigurationFromComponent(proxy corev1alpha1.ComponentSpec) (string, 
 }
 
 func applyServiceExpose(pxc *pxcv1.PerconaXtraDBCluster, engine, proxy corev1alpha1.ComponentSpec) {
-	svc := engine.Service
-	if proxy.Service != nil {
-		svc = proxy.Service
-	}
-	if svc == nil {
-		return
+	if expose := buildServiceExpose(engine.Service); expose != nil {
+		pxc.Spec.PXC.Expose = *expose
 	}
 
-	expose := pxcv1.ServiceExpose{
+	expose := buildServiceExpose(proxy.Service)
+	if expose == nil {
+		return
+	}
+	switch {
+	case pxc.Spec.HAProxyEnabled():
+		pxc.Spec.HAProxy.ExposePrimary = *expose
+	case pxc.Spec.ProxySQLEnabled():
+		pxc.Spec.ProxySQL.Expose = *expose
+	}
+}
+
+func buildServiceExpose(svc *corev1alpha1.Service) *pxcv1.ServiceExpose {
+	if svc == nil {
+		return nil
+	}
+
+	expose := &pxcv1.ServiceExpose{
 		Type: svc.ServiceType,
 	}
 	if len(svc.Annotations) > 0 {
@@ -732,11 +745,5 @@ func applyServiceExpose(pxc *pxcv1.PerconaXtraDBCluster, engine, proxy corev1alp
 			expose.LoadBalancerSourceRanges = []string(ranges)
 		}
 	}
-
-	switch {
-	case pxc.Spec.HAProxyEnabled():
-		pxc.Spec.HAProxy.ExposePrimary = expose
-	case pxc.Spec.ProxySQLEnabled():
-		pxc.Spec.ProxySQL.Expose = expose
-	}
+	return expose
 }

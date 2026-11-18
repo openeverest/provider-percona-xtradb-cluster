@@ -242,6 +242,22 @@ spec:
                   wsrep-provider-options = evs.delayed_keep_period=PT545S;evs.inactive_timeout=PT90S;gmcast.peer_timeout=PT11S;gmcast.time_wait=PT13S;pc.linger=PT45S;evs.delay_margin=PT22S;evs.suspect_timeout=PT45S;gcs.fc_limit=96;gcs.max_packet_size=98304;evs.send_window=768;evs.user_send_window=768;evs.join_retrans_period=PT3S;evs.inactive_check_period=PT3S;evs.stats_report_period=PT1M;evs.max_install_timeouts=3;pc.announce_timeout=PT45S;pc.recovery=true;gcache.size=477560113;gcache.recover=yes;
               path: spec.components.engine.parameters.configuration
               uiType: text
+            engineExposure:
+              fieldParams:
+                defaultValue: ClusterIP
+                helperText: How clients reach the engine nodes directly, bypassing the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster. Most clients should go through the proxy instead; this is for clients that need a direct connection to a specific node.
+                label: Direct database exposure
+                options:
+                  - label: ClusterIP
+                    value: ClusterIP
+                  - label: LoadBalancer
+                    value: LoadBalancer
+                  - label: NodePort
+                    value: NodePort
+              path: spec.components.engine.service.serviceType
+              uiType: select
+              validation:
+                required: true
             podSchedulingPolicy:
               components:
                 policy:
@@ -271,6 +287,7 @@ spec:
             - storageClass
             - configuration
             - podSchedulingPolicy
+            - engineExposure
           description: Configure advanced PXC settings.
           label: Advanced configuration
         databaseVersion:
@@ -307,6 +324,20 @@ spec:
                   # section, depending on the selected proxy type.
               path: spec.components.proxy.parameters.configuration
               uiType: text
+            proxyExposure:
+              fieldParams:
+                defaultValue: ClusterIP
+                helperText: How clients reach the proxy. ClusterIP keeps it reachable only from inside the Kubernetes cluster. For NodePort, see https://openeverest.io/docs/current/networking/nodeport_support/ for how to access your database.
+                label: Exposure
+                options:
+                  - label: ClusterIP
+                    value: ClusterIP
+                  - label: LoadBalancer
+                    value: LoadBalancer
+                  - label: NodePort
+                    value: NodePort
+              path: spec.components.proxy.service.serviceType
+              uiType: select
             proxyNodes:
               fieldParams:
                 defaultValue: 2
@@ -333,6 +364,7 @@ spec:
           componentsOrder:
             - proxyType
             - proxyNodes
+            - proxyExposure
             - proxyConfiguration
           description: Configure a single proxy type for the cluster.
           label: Proxy

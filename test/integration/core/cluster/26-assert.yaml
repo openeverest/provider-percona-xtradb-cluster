@@ -1,0 +1,52 @@
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: test-pxc-cluster
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  components:
+    engine:
+      type: pxc
+      replicas: 5
+      service:
+        serviceType: NodePort
+    proxy:
+      type: haproxy
+      replicas: 1
+      service:
+        serviceType: LoadBalancer
+        annotations:
+          proxy-annotation: "proxy-value"
+        loadBalancerService:
+          sourceRanges:
+            - "172.16.0.0/12"
+status:
+  phase: Ready
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: test-pxc-cluster
+spec:
+  pxc:
+    size: 5
+    # Engine exposure (NodePort) is independent of the proxy's own exposure
+    # settings applied in this step.
+    expose:
+      type: NodePort
+  haproxy:
+    enabled: true
+    size: 1
+    exposePrimary:
+      type: LoadBalancer
+      annotations:
+        proxy-annotation: "proxy-value"
+      loadBalancerSourceRanges:
+        - "172.16.0.0/12"
+status:
+  state: ready
+  pxc:
+    size: 5
+    ready: 5
+
