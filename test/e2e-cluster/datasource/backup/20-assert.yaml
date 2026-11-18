@@ -2,7 +2,12 @@ apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupStorage
 metadata:
   name: seaweedfs-storage
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+  (backupClasses[?name == 'pxc'].compatibility | [0]): Compatible
 ---
+# The class the chart installs, once the provider has accepted it and
+# core has judged it compatible with the provider.
 apiVersion: backup.openeverest.io/v1alpha1
 kind: BackupClass
 metadata:
@@ -10,10 +15,16 @@ metadata:
 spec:
   displayName: Percona Backup for MySQL based on Percona XtraDB Cluster
   executionMode: ProviderManaged
-  supportedProviders:
-    - percona-xtradb-cluster
+  backupStorageClasses:
+    - name: s3
+      authModes:
+        - AccessKey
   providerManaged:
+    providerRef:
+      name: percona-xtradb-cluster
     supportsPITR: true
     limits:
       maxPITREnabledStorages: 1
-
+status:
+  (conditions[?type == 'Accepted'].status | [0]): "True"
+  (providers[?name == 'percona-xtradb-cluster'].compatibility | [0]): Compatible

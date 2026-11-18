@@ -4,5 +4,10 @@ metadata:
   name: test-admission-other-provider
 spec:
   executionMode: ProviderManaged
-  supportedProviders:
-    - percona-server-mongodb
+  backupStorageClasses:
+    - name: s3
+      authModes:
+        - AccessKey
+  providerManaged:
+    providerRef:
+      name: percona-server-mongodb
