@@ -17,7 +17,8 @@ spec:
           timeout client 30s
           timeout server 30s
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
 ---
 apiVersion: pxc.percona.com/v1
 kind: PerconaXtraDBCluster

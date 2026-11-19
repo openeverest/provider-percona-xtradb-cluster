@@ -5,7 +5,8 @@ kind: Instance
 metadata:
   name: pxc-bindings
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
   monitoring:
     sources:
       identity:

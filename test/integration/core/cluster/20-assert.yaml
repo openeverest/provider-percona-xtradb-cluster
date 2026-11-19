@@ -13,7 +13,9 @@ spec:
       type: haproxy
       replicas: 1
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  (components[?name == 'engine'] | [0].desiredReplicas): 5
 ---
 apiVersion: pxc.percona.com/v1
 kind: PerconaXtraDBCluster

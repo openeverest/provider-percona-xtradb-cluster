@@ -18,4 +18,17 @@ metadata:
 spec:
   pxcCluster: src-pxc-cluster
   backupName: src-backup
-
+---
+# The restore replaces the data of a cluster that has been available: the
+# Instance stays Provisioned, and is neither Ready nor Available until the
+# restore ends.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: src-pxc-cluster
+status:
+  phase: Provisioned
+  (conditions[?type == 'Restoring'].status | [0]): "True"
+  (conditions[?type == 'Ready'].status | [0]): "False"
+  (conditions[?type == 'Ready'].reason | [0]): Restoring
+  (conditions[?type == 'Available'].status | [0]): "False"

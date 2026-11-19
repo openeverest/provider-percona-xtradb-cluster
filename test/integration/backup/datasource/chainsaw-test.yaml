@@ -92,6 +92,14 @@ spec:
             content: |
               kubectl patch pxc-restore.pxc.percona.com/src-restore --subresource status -n "$NAMESPACE" --type=merge \
                 -p '{"status":{"state":"Succeeded"}}'
+              # Like the operator, which starts the cluster again once the
+              # restore is done, report the latest generation as observed:
+              # the provider applies the spec again once no restore runs.
+              kubectl wait restore/src-restore -n "$NAMESPACE" \
+                --for=jsonpath='{.status.state}'=Succeeded --timeout=60s
+              GEN=$(kubectl get pxc.pxc.percona.com/src-pxc-cluster -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')
+              kubectl patch pxc.pxc.percona.com/src-pxc-cluster --subresource status -n "$NAMESPACE" --type=merge \
+                -p "{\"status\":{\"observedGeneration\":${GEN}}}"
         - assert:
             file: 31-assert.yaml
 

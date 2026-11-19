@@ -38,8 +38,9 @@ spec:
             file: 10-assert.yaml
 
     # Create the users secret, then simulate the cluster becoming ready. The
-    # secret must exist before the status patch triggers reconcile, otherwise
-    # connection details fail and the Instance cannot become Ready.
+    # secret is created first because the provider reads it for the
+    # connection details as soon as the cluster is ready, and would otherwise
+    # fail and retry with a growing delay.
     - name: cluster-ready
       try:
         - apply:
