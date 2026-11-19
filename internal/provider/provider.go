@@ -78,6 +78,25 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 	}
 }
 
+// engineReplicas returns the number of PXC nodes the Instance asks for, the
+// provider's default when it does not say.
+func engineReplicas(c *controller.Context) int32 {
+	return replicasOrDefault(c.Instance().Spec.Components[common.ComponentEngine], defaultEngineReplicas)
+}
+
+// proxyReplicas returns the number of proxy pods the Instance asks for, the
+// provider's default when it does not say.
+func proxyReplicas(c *controller.Context) int32 {
+	return replicasOrDefault(c.Instance().Spec.Components[common.ComponentProxy], defaultProxyReplicas)
+}
+
+func replicasOrDefault(component corev1alpha1.ComponentSpec, def int32) int32 {
+	if component.Replicas != nil {
+		return *component.Replicas
+	}
+	return def
+}
+
 func imageForComponentTypeVersion(spec *corev1alpha1.ProviderSpec, componentType, version string) string {
 	ct, ok := spec.ComponentTypes[componentType]
 	if !ok {
@@ -176,11 +195,8 @@ func SyncPXC(c *controller.Context) error {
 	if !ok {
 		return fmt.Errorf("instance spec has invalid %q component; this should be caught by Validate", common.ComponentEngine)
 	}
-	engineReplicas := defaultEngineReplicas
-	if engine.Replicas != nil {
-		engineReplicas = *engine.Replicas
-	}
-	pxc.Spec.PXC.Size = engineReplicas
+	nodes := engineReplicas(c)
+	pxc.Spec.PXC.Size = nodes
 	if engine.Resources != nil {
 		pxc.Spec.PXC.Resources = *engine.Resources
 	}
@@ -210,10 +226,7 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	proxyType := proxy.Type
-	proxyReplicas := defaultProxyReplicas
-	if proxy.Replicas != nil {
-		proxyReplicas = *proxy.Replicas
-	}
+	proxies := proxyReplicas(c)
 	// Proxies hold no data, so their replicas may share a node.
 	proxyAntiAffinityKey := pxcv1.AffinityTopologyKeyOff
 
@@ -222,7 +235,7 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.ProxySQL = &pxcv1.ProxySQLSpec{
 			PodSpec: pxcv1.PodSpec{
 				Enabled: true,
-				Size:    proxyReplicas,
+				Size:    proxies,
 				VolumeSpec: &pxcv1.VolumeSpec{
 					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
@@ -234,7 +247,7 @@ func SyncPXC(c *controller.Context) error {
 			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
 		}
 		pxc.Spec.HAProxy.Enabled = true
-		pxc.Spec.HAProxy.Size = proxyReplicas
+		pxc.Spec.HAProxy.Size = proxies
 		pxc.Spec.ProxySQL = nil
 		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc), proxyAntiAffinityKey)
 	}
@@ -249,7 +262,7 @@ func SyncPXC(c *controller.Context) error {
 	if pxc.Spec.HAProxyEnabled() {
 		proxyReplicasPtr = &pxc.Spec.HAProxy.Size
 	}
-	pxc.Spec.Unsafe = unsafeFlags(&engineReplicas, proxyReplicasPtr)
+	pxc.Spec.Unsafe = unsafeFlags(&nodes, proxyReplicasPtr)
 
 	spec, err := c.ProviderSpec()
 	if err != nil {
@@ -263,7 +276,7 @@ func SyncPXC(c *controller.Context) error {
 	if engineConfig != "" {
 		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
-		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(engineReplicas, engine.Resources)
+		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(nodes, engine.Resources)
 	}
 
 	tls, err := tlsParameters(c.Instance())

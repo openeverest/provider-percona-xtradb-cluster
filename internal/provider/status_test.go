@@ -22,6 +22,7 @@ import (
 	commonv1alpha1 "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	"github.com/stretchr/testify/assert"
@@ -925,6 +926,116 @@ func TestEnqueueStatefulSetInstance(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "some-set", Namespace: statusTestNamespace, OwnerReferences: tt.owners},
 			}
 			assert.Equal(t, tt.want, enqueueStatefulSetInstance()(context.Background(), set))
+		})
+	}
+}
+
+// TestStatusDesiredReplicas covers how many pods the provider reports each
+// component will have: worked out from the Instance with the provider's
+// defaults, whatever the PerconaXtraDBCluster object runs for now.
+func TestStatusDesiredReplicas(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		spec    corev1alpha1.InstanceSpec
+		cluster *pxcv1.PerconaXtraDBCluster
+		want    map[string]int32
+	}{
+		{
+			name: "replicas unset",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {},
+				common.ComponentProxy:  {Type: common.ProxyTypeHAProxy},
+				common.ComponentBackup: {},
+			}},
+			cluster: readyCluster(),
+			want:    map[string]int32{common.ComponentEngine: defaultEngineReplicas, common.ComponentProxy: defaultProxyReplicas},
+		},
+		{
+			name: "scaling from 3 to 5 nodes and from 2 to 3 proxies",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {Replicas: ptrTo(int32(5))},
+				common.ComponentProxy:  {Type: common.ProxyTypeProxySQL, Replicas: ptrTo(int32(3))},
+			}},
+			cluster: readyCluster(),
+			want:    map[string]int32{common.ComponentEngine: 5, common.ComponentProxy: 3},
+		},
+		{
+			name: "single node",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {Replicas: ptrTo(int32(1))},
+				common.ComponentProxy:  {Type: common.ProxyTypeHAProxy, Replicas: ptrTo(int32(1))},
+			}},
+			cluster: readyCluster(),
+			want:    map[string]int32{common.ComponentEngine: 1, common.ComponentProxy: 1},
+		},
+		{
+			name: "no proxy component",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {},
+			}},
+			cluster: readyCluster(),
+			want:    map[string]int32{common.ComponentEngine: defaultEngineReplicas},
+		},
+		{
+			name: "paused on the PerconaXtraDBCluster object",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {},
+				common.ComponentProxy:  {Type: common.ProxyTypeHAProxy},
+			}},
+			cluster: readyCluster(paused),
+			want:    map[string]int32{common.ComponentEngine: defaultEngineReplicas, common.ComponentProxy: defaultProxyReplicas},
+		},
+		{
+			name: "resized by a point-in-time restore",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {},
+				common.ComponentProxy:  {Type: common.ProxyTypeHAProxy},
+			}},
+			// The operator runs one node and no proxy while it replays the
+			// binary logs.
+			cluster: readyCluster(func(pxc *pxcv1.PerconaXtraDBCluster) {
+				pxc.Spec.PXC.Size = 1
+				pxc.Spec.HAProxy.Size = 0
+			}),
+			want: map[string]int32{common.ComponentEngine: defaultEngineReplicas, common.ComponentProxy: defaultProxyReplicas},
+		},
+		{
+			name: "PerconaXtraDBCluster object not created yet",
+			spec: corev1alpha1.InstanceSpec{Components: map[string]corev1alpha1.ComponentSpec{
+				common.ComponentEngine: {Replicas: ptrTo(int32(5))},
+				common.ComponentProxy:  {Type: common.ProxyTypeHAProxy},
+			}},
+			want: map[string]int32{common.ComponentEngine: 5, common.ComponentProxy: defaultProxyReplicas},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var objs []client.Object
+			if tt.cluster != nil {
+				objs = append(objs, tt.cluster)
+			}
+			c := statusContext(t, tt.spec, objs...)
+
+			got, err := StatusPXC(c)
+			require.NoError(t, err)
+
+			desired := make(map[string]int32, len(got.DesiredReplicas))
+			for _, r := range got.DesiredReplicas {
+				desired[r.Component] = r.Desired
+			}
+			assert.Equal(t, tt.want, desired)
+			assert.Len(t, got.DesiredReplicas, len(tt.want), "each component is reported once")
+
+			// Sync sizes the cluster with the same helpers.
+			assert.Equal(t, tt.want[common.ComponentEngine], engineReplicas(c))
+			if want, ok := tt.want[common.ComponentProxy]; ok {
+				assert.Equal(t, want, proxyReplicas(c))
+			}
 		})
 	}
 }

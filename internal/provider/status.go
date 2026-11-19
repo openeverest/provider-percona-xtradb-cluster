@@ -25,6 +25,7 @@ import (
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
+	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
 	appsv1 "k8s.io/api/apps/v1"
@@ -141,12 +142,13 @@ type restoreInProgress struct {
 
 // StatusPXC reports what the provider observes about the cluster: whether it
 // runs what the Instance asks for, whether clients can connect, what is wrong
-// and which long operation is running. The runtime derives the Instance's
-// phase and conditions from these facts.
+// and which long operation is running, and how many pods each component will
+// have. The runtime derives the Instance's phase and conditions from these
+// facts.
 func StatusPXC(c *controller.Context) (controller.Status, error) {
 	pxc, err := uncachedCluster(c)
 	if apierrors.IsNotFound(err) {
-		return controller.Progressing("Waiting for the PerconaXtraDBCluster object to be created"), nil
+		return withDesiredReplicas(c, controller.Progressing("Waiting for the PerconaXtraDBCluster object to be created")), nil
 	}
 	if err != nil {
 		return controller.Status{}, err
@@ -162,7 +164,7 @@ func StatusPXC(c *controller.Context) (controller.Status, error) {
 		return controller.Status{}, err
 	}
 
-	status := observe(pxc, sets, restore)
+	status := withDesiredReplicas(c, observe(pxc, sets, restore))
 
 	// The connection details are reported as soon as clients can connect,
 	// not only once the cluster has converged: whoever is told the database
@@ -322,6 +324,23 @@ func observe(pxc *pxcv1.PerconaXtraDBCluster, sets []appsv1.StatefulSet, restore
 		status = status.WithOperation(corev1alpha1.ConditionUpgrading, reasonRollingOutImage, message)
 	}
 
+	return status
+}
+
+// withDesiredReplicas reports how many pods each component will have once the
+// cluster runs what the Instance asks for. The counts come from the Instance,
+// with the defaults Sync applies, not from the PerconaXtraDBCluster object,
+// which may still describe an earlier spec or have been resized by a restore.
+// A cluster paused on that object keeps them: the Instance does not ask for
+// the pause. The backup component has no pods of its own.
+func withDesiredReplicas(c *controller.Context, status controller.Status) controller.Status {
+	components := c.Instance().Spec.Components
+	if _, ok := components[common.ComponentEngine]; ok {
+		status = status.WithDesiredReplicas(common.ComponentEngine, engineReplicas(c))
+	}
+	if _, ok := components[common.ComponentProxy]; ok {
+		status = status.WithDesiredReplicas(common.ComponentProxy, proxyReplicas(c))
+	}
 	return status
 }
 
