@@ -391,18 +391,17 @@ spec:
                     label: CPU
                     step: 1
                   path: spec.components.engine.resources.limits.cpu
-                  uiType: number
+                  uiType: quantity
                   validation:
                     min: 0.6
                     required: true
                 disk:
                   fieldParams:
-                    badge: Gi
-                    badgeToApi: true
                     defaultValue: 100
                     label: Disk
+                    unit: Gi
                   path: spec.components.engine.storage.size
-                  uiType: number
+                  uiType: quantity
                   validation:
                     int: true
                     min: 1
@@ -414,13 +413,12 @@ spec:
                     required: true
                 memory:
                   fieldParams:
-                    badge: Gi
-                    badgeToApi: true
                     defaultValue: 8
                     label: Memory
                     step: 0.1
+                    unit: Gi
                   path: spec.components.engine.resources.limits.memory
-                  uiType: number
+                  uiType: quantity
                   validation:
                     min: 0.512
                     required: true
