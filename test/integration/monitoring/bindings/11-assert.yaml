@@ -14,7 +14,7 @@ status:
           openeverest_instance: pxc-bindings
           openeverest_namespace: ($namespace)
           openeverest_provider: percona-xtradb-cluster
-      (length(metrics)): 2
+      (length(metrics || `[]`)): 2
       (metrics[?component == 'engine'] | [0]):
         kind: mysql
         podSelector:

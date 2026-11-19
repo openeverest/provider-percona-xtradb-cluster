@@ -8,7 +8,7 @@ status:
   monitoring:
     (destinations == null): true
     sources:
-      (length(metrics)): 2
+      (length(metrics || `[]`)): 2
       (metrics[?component == 'engine'] | [0]):
         kind: mysql
         podSelector:

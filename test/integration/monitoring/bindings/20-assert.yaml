@@ -17,8 +17,8 @@ metadata:
   name: pxc-bindings
 status:
   monitoring:
-    (length(destinations)): 1
+    (length(destinations || `[]`)): 1
     (destinations[0].name): pmm
-    (length(sources.metrics)): 1
+    (length(sources.metrics || `[]`)): 1
     (sources.metrics[0].component): proxy
   (conditions[?type == 'MonitoringConfigured'].status | [0]): "True"

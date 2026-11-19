@@ -14,5 +14,5 @@ metadata:
   name: pxc-metrics-policy
 status:
   monitoring:
-    (length(sources.metrics)): 1
+    (length(sources.metrics || `[]`)): 1
     (sources.metrics[0].component): proxy
