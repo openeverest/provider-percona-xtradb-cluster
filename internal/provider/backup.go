@@ -581,15 +581,23 @@ func (p *PXCProvider) BackupWatches() []controller.WatchConfig {
 // hasActiveRestoreForInstance reports whether the namespace has at least one
 // non-terminal Restore for the given instance.
 func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName string) (bool, error) {
+	restores, err := activeRestores(c, namespace, instanceName)
+	return len(restores) > 0, err
+}
+
+// activeRestores returns the Restores for the given instance that have not
+// reached a terminal state.
+func activeRestores(c *controller.Context, namespace, instanceName string) ([]backupv1alpha1.Restore, error) {
 	restoreList := &backupv1alpha1.RestoreList{}
 	if err := c.Client().List(
 		c.Context(),
 		restoreList,
 		client.InNamespace(namespace),
 	); err != nil {
-		return false, fmt.Errorf("list Restore resources for instance %q: %w", instanceName, err)
+		return nil, fmt.Errorf("list Restore resources for instance %q: %w", instanceName, err)
 	}
 
+	var active []backupv1alpha1.Restore
 	for i := range restoreList.Items {
 		r := restoreList.Items[i]
 		if r.Spec.InstanceRef.Name != instanceName || !r.DeletionTimestamp.IsZero() {
@@ -599,15 +607,15 @@ func hasActiveRestoreForInstance(c *controller.Context, namespace, instanceName 
 		case backupv1alpha1.RestoreStateSucceeded, backupv1alpha1.RestoreStateFailed:
 			continue
 		default:
-			return true, nil
+			active = append(active, r)
 		}
 	}
 
-	return false, nil
+	return active, nil
 }
 
 // enqueueRestoreInstance maps a Restore event to a reconcile request for the
-// Instance it targets, so the Instance phase tracks the restore's lifecycle.
+// Instance it targets, so the Instance's status tracks the restore's lifecycle.
 func enqueueRestoreInstance() func(ctx context.Context, obj client.Object) []reconcile.Request {
 	return func(_ context.Context, obj client.Object) []reconcile.Request {
 		r, ok := obj.(*backupv1alpha1.Restore)
