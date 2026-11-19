@@ -163,6 +163,51 @@ kubectl get instance my-instance -o jsonpath='{.status.connection}'
 
 Credentials are in the secret named by `.status.connection.credentialsSecretRef`.
 
+### Status
+
+The provider reports what it observes, and OpenEverest derives the `Instance` conditions from
+it the same way for every provider.
+
+| Condition | What this provider reports |
+|---|---|
+| `Available` | `True` while the PXC nodes, and the HAProxy or ProxySQL pods in front of them, each have a pod the operator counts as ready in the `PerconaXtraDBCluster` status. Otherwise `False`, with reason `NoNodeReady` or `NoProxyReady`. The operator counts only the nodes that run the latest pod template, so early in a rolling update, before the first node has restarted, it is `Unknown` (`ReadyNodesNotCounted`) rather than `False`. It is `False` while a restore runs or the cluster is paused. |
+| `Ready` | `True` once the cluster runs what the `Instance` asks for: the operator reports it ready for the latest generation of the `PerconaXtraDBCluster`, and every StatefulSet runs its latest pod template. Until then the message says what is being waited for. |
+| `Restoring` | `True` while a `Restore` of the `Instance` runs, or a `PerconaXtraDBClusterRestore` created on the operator directly, and while a new `Instance` is seeded from `spec.dataSource`. |
+| `Upgrading` | `True` while a new engine image rolls out. |
+| `StorageResizing` | `True` while the operator grows the volumes of the PXC nodes. |
+
+The connection details Secret is written the first time the database is available, and kept
+current while a change rolls out.
+
+Each component reports `desiredReplicas`, the pods it will have once the cluster runs the `Instance`'s current spec, defaults included: `engine` counts the PXC nodes (3 unless set), `proxy` the HAProxy or ProxySQL pods (2 unless set), and `backup`, which has no pods of its own, is not reported.
+
+A problem makes the `Instance` not `Ready`, with a reason that says what is wrong:
+
+| Reason | Cause |
+|---|---|
+| `PausedOutsideOpenEverest` | `spec.pause` is set on the `PerconaXtraDBCluster`, and neither a restore nor turning TLS on or off, for which the operator pauses the cluster itself, explains it. Nothing but unsetting it there starts the database again. |
+| `AuthenticationFailed` | MySQL rejects the operator's credentials, for example because the users Secret does not match the data. |
+| `ConfigurationRejected` | The operator refuses the cluster's configuration. |
+| `TLSCertificatesNotReady` | The operator cannot get the cluster's certificates. |
+| `ResizeFailed`, `QuotaExceeded` | The volumes of the PXC nodes could not be grown. |
+| `CrashLoopBackOff`, `ImagePullBackOff`, `Unschedulable` | A pod the operator waits for during a rolling update cannot start. |
+| `EngineError` | Any other error the operator reports; the message quotes it. |
+
+Two operator errors are not problems, because the operator retries them on its next pass: a pod that takes longer than the operator's wait limit to restart, and a write that conflicted with another one. While either lasts, the `Instance` waits and says so.
+
+What the provider cannot know:
+
+- **Availability is as old as the operator's last pass over the cluster.** The ready counts
+  are recorded then, and kept when a pass fails.
+- **Operator errors are recognised by fragments of their message.** The operator has no error
+  codes, so a reworded message falls back to `EngineError`. The operator records only the
+  first error after a successful pass, so a later, different one shows the earlier message
+  until a pass succeeds.
+- **An operator error is never a terminal problem**, because the operator does not say which
+  generation it is about.
+- **`Upgrading` is best effort.** It is inferred from the image the nodes run, which the
+  operator records only once they all run the latest pod template.
+
 ## Topologies
 
 <!-- BEGIN GENERATED: topologies -->

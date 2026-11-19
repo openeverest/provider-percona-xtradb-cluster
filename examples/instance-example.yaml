@@ -46,9 +46,25 @@ spec:
 #      reason: Available
 #      status: "True"
 #      type: ConnectionDetailsReady
+#    - type: Available
+#      status: "True"
+#      reason: Available
+#    - type: Ready
+#      status: "True"
+#      reason: Ready
+#      message: The instance is ready
+#  components:
+#    - name: engine
+#      replicas: 3
+#      readyReplicas: 3
+#      desiredReplicas: 3
+#    - name: proxy
+#      replicas: 2
+#      readyReplicas: 2
+#      desiredReplicas: 2
 #  connectionSecretRef:
 #    name: inst-vyg-conn
-#  phase: Ready
+#  phase: Provisioned
 #  version: 8.4.8
 
 

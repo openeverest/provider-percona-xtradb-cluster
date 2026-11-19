@@ -34,10 +34,14 @@ spec:
         - assert:
             file: 10-assert.yaml
 
-    # Simulate the PXC operator marking the cluster ready: the provider
-    # publishes metrics endpoints only for a serving cluster.
+    # Create the users secret, then simulate the PXC operator marking the
+    # cluster ready: the provider publishes metrics endpoints only for a
+    # serving cluster, and reads the secret for the connection details in
+    # the same pass.
     - name: cluster-ready
       try:
+        - apply:
+            file: 11-cluster-ready.yaml
         - script:
             content: |
               GEN=$(kubectl get pxc.pxc.percona.com/pxc-metrics-policy -n "$NAMESPACE" -o jsonpath='{.metadata.generation}')

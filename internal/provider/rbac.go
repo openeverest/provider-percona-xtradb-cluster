@@ -20,6 +20,9 @@ package provider
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // Allow the runtime to report on the component pods in the Instance status.
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// Allow tracking rollouts: an Instance has converged only once the cluster's
+// StatefulSets run their latest pod template.
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=list;watch
 // +kubebuilder:rbac:groups=pxc.percona.com,resources=perconaxtradbclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=pxc.percona.com,resources=perconaxtradbclusters/status,verbs=get
 // +kubebuilder:rbac:groups=pxc.percona.com,resources=perconaxtradbclusters/finalizers,verbs=update

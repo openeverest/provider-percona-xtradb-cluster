@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strings"
 
 	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
@@ -31,12 +30,12 @@ import (
 	"github.com/openeverest/provider-percona-xtradb-cluster/internal/common"
 	pxcv1 "github.com/percona/percona-xtradb-cluster-operator/pkg/apis/pxc/v1"
 	"github.com/percona/percona-xtradb-cluster-operator/pkg/naming"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -77,6 +76,25 @@ func defaultSpec() pxcv1.PerconaXtraDBClusterSpec {
 			},
 		},
 	}
+}
+
+// engineReplicas returns the number of PXC nodes the Instance asks for, the
+// provider's default when it does not say.
+func engineReplicas(c *controller.Context) int32 {
+	return replicasOrDefault(c.Instance().Spec.Components[common.ComponentEngine], defaultEngineReplicas)
+}
+
+// proxyReplicas returns the number of proxy pods the Instance asks for, the
+// provider's default when it does not say.
+func proxyReplicas(c *controller.Context) int32 {
+	return replicasOrDefault(c.Instance().Spec.Components[common.ComponentProxy], defaultProxyReplicas)
+}
+
+func replicasOrDefault(component corev1alpha1.ComponentSpec, def int32) int32 {
+	if component.Replicas != nil {
+		return *component.Replicas
+	}
+	return def
 }
 
 func imageForComponentTypeVersion(spec *corev1alpha1.ProviderSpec, componentType, version string) string {
@@ -177,11 +195,8 @@ func SyncPXC(c *controller.Context) error {
 	if !ok {
 		return fmt.Errorf("instance spec has invalid %q component; this should be caught by Validate", common.ComponentEngine)
 	}
-	engineReplicas := defaultEngineReplicas
-	if engine.Replicas != nil {
-		engineReplicas = *engine.Replicas
-	}
-	pxc.Spec.PXC.Size = engineReplicas
+	nodes := engineReplicas(c)
+	pxc.Spec.PXC.Size = nodes
 	if engine.Resources != nil {
 		pxc.Spec.PXC.Resources = *engine.Resources
 	}
@@ -211,10 +226,7 @@ func SyncPXC(c *controller.Context) error {
 	}
 
 	proxyType := proxy.Type
-	proxyReplicas := defaultProxyReplicas
-	if proxy.Replicas != nil {
-		proxyReplicas = *proxy.Replicas
-	}
+	proxies := proxyReplicas(c)
 	// Proxies hold no data, so their replicas may share a node.
 	proxyAntiAffinityKey := pxcv1.AffinityTopologyKeyOff
 
@@ -223,7 +235,7 @@ func SyncPXC(c *controller.Context) error {
 		pxc.Spec.ProxySQL = &pxcv1.ProxySQLSpec{
 			PodSpec: pxcv1.PodSpec{
 				Enabled: true,
-				Size:    proxyReplicas,
+				Size:    proxies,
 				VolumeSpec: &pxcv1.VolumeSpec{
 					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
@@ -235,7 +247,7 @@ func SyncPXC(c *controller.Context) error {
 			pxc.Spec.HAProxy = &pxcv1.HAProxySpec{}
 		}
 		pxc.Spec.HAProxy.Enabled = true
-		pxc.Spec.HAProxy.Size = proxyReplicas
+		pxc.Spec.HAProxy.Size = proxies
 		pxc.Spec.ProxySQL = nil
 		applyScheduling(&pxc.Spec.HAProxy.PodSpec, proxy.SchedulingPolicy, naming.LabelsHAProxy(pxc), proxyAntiAffinityKey)
 	}
@@ -250,7 +262,7 @@ func SyncPXC(c *controller.Context) error {
 	if pxc.Spec.HAProxyEnabled() {
 		proxyReplicasPtr = &pxc.Spec.HAProxy.Size
 	}
-	pxc.Spec.Unsafe = unsafeFlags(&engineReplicas, proxyReplicasPtr)
+	pxc.Spec.Unsafe = unsafeFlags(&nodes, proxyReplicasPtr)
 
 	spec, err := c.ProviderSpec()
 	if err != nil {
@@ -264,7 +276,7 @@ func SyncPXC(c *controller.Context) error {
 	if engineConfig != "" {
 		pxc.Spec.PXC.Configuration = engineConfig
 	} else {
-		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(engineReplicas, engine.Resources)
+		pxc.Spec.PXC.Configuration = defaultConfigurationForEngine(nodes, engine.Resources)
 	}
 
 	tls, err := tlsParameters(c.Instance())
@@ -369,8 +381,8 @@ func SyncPXC(c *controller.Context) error {
 	// reads the cluster's users secret, and a failed validation is terminal for
 	// the PerconaXtraDBClusterRestore, so issuing it before the StatefulSet
 	// exists fails the restore permanently. While the gate is not satisfied the
-	// helper is not invoked and StatusPXC reports Restoring so callers know the
-	// Instance is still being seeded.
+	// helper is not invoked, and the runtime reports that the Instance is still
+	// being seeded.
 	if c.Instance().Spec.DataSource != nil {
 		current := &pxcv1.PerconaXtraDBCluster{}
 		if err := c.Get(current, c.Name()); err != nil {
@@ -505,48 +517,6 @@ func unsafeFlags(replicas, proxyReplicas *int32) pxcv1.UnsafeFlags {
 	return flags
 }
 
-// StatusPXC computes the current status of the PXC cluster.
-func StatusPXC(c *controller.Context) (controller.Status, error) {
-	pxc := &pxcv1.PerconaXtraDBCluster{}
-	if err := c.Get(pxc, c.Name()); err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			return controller.Provisioning("Waiting for PerconaXtraDBCluster"), nil
-		}
-		return controller.Failed("Failed to get PerconaXtraDBCluster: " + err.Error()), err
-	}
-	if ds := c.GetDataSourceStatus(); ds != nil && !ds.Done {
-		return controller.Restoring(ds.Message), nil
-	}
-
-	// A restore drives the engine through paused, starting and momentarily
-	// ready states, so reading the phase off the engine alone makes the Instance
-	// flap between Restoring, Provisioning and Ready while one is in flight.
-	// The Restore CR reaching a terminal state is what ends the restore, so let
-	// it own the phase for as long as it is running.
-	activeRestore, err := hasActiveRestoreForInstance(c, c.Namespace(), c.Name())
-	if err != nil {
-		return controller.Status{}, err
-	}
-	if activeRestore {
-		return controller.Restoring("Restore is running"), nil
-	}
-
-	switch pxc.Status.Status {
-	case pxcv1.AppStatePaused:
-		return controller.Provisioning("Cluster is paused"), nil
-	case pxcv1.AppStateReady:
-		details, err := buildConnectionDetails(c, pxc)
-		if err != nil {
-			return controller.Failed("Failed to build connection details: " + err.Error()), nil
-		}
-		return controller.ReadyWithConnectionDetails(details), nil
-	case pxcv1.AppStateError:
-		return controller.Failed(strings.Join(pxc.Status.Messages, ";")), nil
-	default:
-		return controller.Provisioning("Cluster is being created"), nil
-	}
-}
-
 // CleanupPXC handles deletion of the PXC cluster.
 func CleanupPXC(c *controller.Context) error {
 	l := log.FromContext(c.Context())
@@ -583,6 +553,8 @@ func NewPXCProviderInterface() *PXCProvider {
 			// Sync lists MonitoringBindings and the conformance harness's scheme has only these.
 			monitoringv1alpha1.SchemeBuilder.AddToScheme,
 			backupv1alpha1.SchemeBuilder.AddToScheme,
+			// StatefulSets are read to tell whether the cluster has rolled out.
+			appsv1.AddToScheme,
 		},
 		WatchConfigs: []controller.WatchConfig{
 			// Watch owned PXC resources - only trigger on spec changes
@@ -595,12 +567,19 @@ func NewPXCProviderInterface() *PXCProvider {
 			controller.WatchExternal(&pxcv1.PerconaXtraDBClusterBackup{},
 				handler.EnqueueRequestsFromMapFunc(enqueueOperatorBackupInstance()),
 			),
-			// Watch Restores so the Instance leaves the Restoring phase as soon
+			// Watch Restores so the Instance stops reporting a restore as soon
 			// as one reaches a terminal state. The engine usually reports ready
-			// before the Restore CR does, so without this the Instance would sit
-			// in Restoring until an unrelated event arrived.
+			// before the Restore CR does, so without this the Instance would
+			// keep reporting it until an unrelated event arrived.
 			controller.WatchExternal(&backupv1alpha1.Restore{},
 				handler.EnqueueRequestsFromMapFunc(enqueueRestoreInstance()),
+			),
+			// Watch the cluster's StatefulSets: the Instance has converged
+			// only once they have rolled out, which the operator's own status
+			// can report too early. They are owned by the
+			// PerconaXtraDBCluster, so map them by their controller.
+			controller.WatchExternal(&appsv1.StatefulSet{},
+				handler.EnqueueRequestsFromMapFunc(enqueueStatefulSetInstance()),
 			),
 		},
 	}
@@ -614,7 +593,7 @@ func (p *PXCProvider) Sync(c *controller.Context) error {
 	return SyncPXC(c)
 }
 
-// Status computes the current status of the cluster.
+// Status reports what the provider observes about the cluster.
 func (p *PXCProvider) Status(c *controller.Context) (controller.Status, error) {
 	return StatusPXC(c)
 }

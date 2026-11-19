@@ -1,0 +1,11 @@
+---
+# Create the credentials secret: the provider reads it for the connection
+# details as soon as the cluster is ready, and the operator that would create
+# it is scaled to 0.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: everest-secrets-pxc-metrics-policy
+type: Opaque
+stringData:
+  root: test-password
