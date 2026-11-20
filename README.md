@@ -48,7 +48,7 @@ manages pods directly — all lifecycle work is delegated to the operator.
 
 | provider-percona-xtradb-cluster | OpenEverest | Percona Operator for MySQL | Kubernetes |
 |---|---|---|---|
-| `0.5.x` | `2.0.0-dev.5` | `1.20.x` | `1.30` – `1.34` |
+| `0.5.x` | `2.0.0-alpha.1` | `1.20.x` | `1.32` – `1.34` |
 | `0.4.x` | `2.0.0-dev.4` | `1.20.x` | `1.30` – `1.34` |
 | `0.3.x` | `2.0.0-dev.4` | `1.20.x` | `1.30` – `1.34` |
 | `0.2.x` | `2.0.0-dev.3` | `1.20.x` | `1.30` – `1.34` |
@@ -88,7 +88,7 @@ The provider chart is published as an OCI artifact to GitHub Container Registry:
 ```bash
 helm install provider-percona-xtradb-cluster \
   oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster \
-  --version 0.3.0 \
+  --version 0.5.0 \
   --namespace everest-system
 ```
 
@@ -109,7 +109,7 @@ Upgrade and uninstall:
 
 ```bash
 helm upgrade provider-percona-xtradb-cluster \
-  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.3.0
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.5.0
 helm uninstall provider-percona-xtradb-cluster --namespace everest-system
 ```
 

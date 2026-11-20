@@ -145,7 +145,7 @@ spec:
           type: object
       type: object
   release:
-    version: 0.3.0
+    version: 0.5.0
   topologies:
     cluster:
       components:
