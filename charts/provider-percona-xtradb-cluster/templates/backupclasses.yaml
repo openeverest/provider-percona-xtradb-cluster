@@ -1,7 +1,8 @@
 {{/*
 Renders every BackupClass manifest produced by `provider-sdk generate` from
-definition/backupclasses/. One YAML document per file; the generator writes
-deterministic, sorted output so Helm diffs stay clean.
+definition/backupclasses/, stamped with the provider release and the
+OpenEverest it is built against. One YAML document per file; the generator
+writes deterministic, sorted output so Helm diffs stay clean.
 */}}
 {{- range $path, $_ := .Files.Glob "generated/backupclasses/*.yaml" }}
 ---
