@@ -141,6 +141,8 @@ spec:
               set -e
               TOKEN="$(kubectl get instance/pxc-issuer -n "${NAMESPACE}" -o jsonpath='{.status.pendingMaintenance[0].approvalToken}')"
               echo "approving ${TOKEN}"
+              kubectl get pod/pxc-issuer-pxc-0 -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}' \
+                > "/tmp/pxc-tls-issuer-e2e-${NAMESPACE}/pxc-0.uid"
               kubectl patch instance/pxc-issuer -n "${NAMESPACE}" --type=merge \
                 -p "{\"spec\":{\"maintenance\":{\"approved\":\"${TOKEN}\"}}}"
         - assert:
@@ -164,15 +166,21 @@ spec:
                 fi
                 openssl verify -CAfile "${WORKDIR}/company-ca.crt" "${WORKDIR}/$s.crt"
               done
-              # The operator rolls the pods onto the new certificates.
-              kubectl -n "${NAMESPACE}" rollout status statefulset/pxc-issuer-pxc --timeout=540s
-              kubectl -n "${NAMESPACE}" rollout status statefulset/pxc-issuer-haproxy --timeout=300s
+              # The operator restarts the PXC pods (OnDelete statefulset) onto
+              # the new certificates.
+              OLD_UID="$(cat "${WORKDIR}/pxc-0.uid")"
+              for i in $(seq 1 100); do
+                UID_NOW="$(kubectl get pod/pxc-issuer-pxc-0 -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+                [ -n "${UID_NOW}" ] && [ "${UID_NOW}" != "${OLD_UID}" ] && break
+                sleep 5
+              done
+              [ "${UID_NOW}" != "${OLD_UID}" ]
 
     - name: client-verifies-server-after-reissue
       try:
         - assert:
             timeout: 10m
-            file: 20-assert.yaml
+            file: 60-assert.yaml
         - script:
             timeout: 60s
             content: *verify
