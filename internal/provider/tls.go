@@ -136,7 +136,7 @@ func configureTLS(c *controller.Context, pxc *pxcv1.PerconaXtraDBCluster, tls de
 		spec.IssuerConf = &cmmeta.IssuerReference{
 			Name:  tls.Issuer.Name,
 			Kind:  string(tls.Issuer.Kind),
-			Group: tls.Issuer.Group,
+			Group: issuerGroup(tls.Issuer.Group),
 		}
 	}
 	if enabled {
@@ -362,12 +362,22 @@ func validateTLSParameters(tls definition.TLSParameters, path *field.Path) field
 	return errs
 }
 
+// issuerGroup returns the issuer API group, defaulting to cert-manager.io as
+// cert-manager itself does.
+func issuerGroup(group string) string {
+	if group == "" {
+		return certManagerGroup
+	}
+	return group
+}
+
 func validateIssuer(issuer definition.IssuerReference, path *field.Path) field.ErrorList {
 	var errs field.ErrorList
-	if msgs := validation.IsDNS1123Subdomain(issuer.Group); len(msgs) > 0 {
+	group := issuerGroup(issuer.Group)
+	if msgs := validation.IsDNS1123Subdomain(group); len(msgs) > 0 {
 		errs = append(errs, field.Invalid(path.Child("group"), issuer.Group, strings.Join(msgs, "; ")))
 	}
-	if issuer.Group != certManagerGroup {
+	if group != certManagerGroup {
 		return errs
 	}
 	switch issuer.Kind {
@@ -465,11 +475,11 @@ func validateTLSChange(c *controller.Context, tls definition.TLSParameters, path
 
 	currentIssuer := ""
 	if ref := current.Spec.TLS; ref != nil && ref.IssuerConf != nil {
-		currentIssuer = ref.IssuerConf.Group + "/" + ref.IssuerConf.Kind + "/" + ref.IssuerConf.Name
+		currentIssuer = issuerGroup(ref.IssuerConf.Group) + "/" + ref.IssuerConf.Kind + "/" + ref.IssuerConf.Name
 	}
 	wantIssuer := ""
 	if tls.Issuer != nil {
-		wantIssuer = tls.Issuer.Group + "/" + string(tls.Issuer.Kind) + "/" + tls.Issuer.Name
+		wantIssuer = issuerGroup(tls.Issuer.Group) + "/" + string(tls.Issuer.Kind) + "/" + tls.Issuer.Name
 	}
 	if currentIssuer != wantIssuer || current.Spec.SSLSecretName != tls.CertificateSecretName {
 		return field.ErrorList{field.Forbidden(path, "certificates and issuer can't change on an existing cluster")}, nil

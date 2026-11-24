@@ -113,6 +113,17 @@ spec:
             TLS configures encryption in transit, between clients and the cluster
             and between its members.
           properties:
+            additionalNames:
+              description: |-
+                AdditionalNames are DNS names clients use to reach the cluster, such
+                as mydb.company.com, added to the in-cluster names of the generated
+                or issued certificates. Not with certificateSecretName: that
+                certificate carries its own names. Changing them on a running cluster
+                reissues the certificates and restarts its pods, so it waits for
+                maintenance approval, and needs certificates issued by cert-manager.
+              items:
+                type: string
+              type: array
             certificateSecretName:
               description: |-
                 CertificateSecretName names a Secret in the cluster namespace with the
@@ -130,9 +141,17 @@ spec:
                 Issuer is the cert-manager issuer that signs the cluster's
                 certificates, instead of a self-signed CA created for the cluster.
               properties:
+                group:
+                  default: cert-manager.io
+                  description: |-
+                    Group is the API group of an external issuer, such as
+                    awspca.cert-manager.io.
+                  type: string
                 kind:
                   default: Issuer
-                  description: Kind of the issuer.
+                  description: |-
+                    Kind of the issuer: Issuer or ClusterIssuer, or the kind of an
+                    external issuer of group.
                   type: string
                 name:
                   description: Name of the issuer.
@@ -477,7 +496,7 @@ spec:
                       uiType: select
                     issuerName:
                       fieldParams:
-                        helperText: Issuer that signs the certificates
+                        helperText: Issuer that signs the certificates. External issuers (spec.parameters.tls.issuer.group) and additional DNS names (spec.parameters.tls.additionalNames) are set in YAML
                         label: cert-manager issuer
                         modes:
                           edit:
