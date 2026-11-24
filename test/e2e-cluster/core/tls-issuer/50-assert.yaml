@@ -1,0 +1,36 @@
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-issuer
+spec:
+  tls:
+    SANs:
+      - db2.example.com
+status:
+  state: ready
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pxc-issuer-ssl
+spec:
+  (contains(dnsNames, 'db2.example.com')): true
+  (contains(dnsNames, 'db.example.com')): false
+  (contains(dnsNames, 'pxc-issuer-pxc')): true
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pxc-issuer-ssl-internal
+spec:
+  (contains(dnsNames, 'db2.example.com')): true
+  (contains(dnsNames, 'db.example.com')): false
+  (contains(dnsNames, 'pxc-issuer-haproxy')): true
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-issuer
+status:
+  (length(pendingMaintenance || `[]`)): 0
+  (conditions[?type == 'Ready'].status | [0]): "True"

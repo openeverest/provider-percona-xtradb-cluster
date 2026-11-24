@@ -1,0 +1,13 @@
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-issuer
+spec:
+  tls:
+    enabled: true
+    issuerConf:
+      name: company-ca
+      kind: Issuer
+      group: cert-manager.io
+    SANs:
+      - db.example.com

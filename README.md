@@ -299,6 +299,9 @@ spec:
       issuer:                          # cert-manager
         name: corp-ca
         kind: ClusterIssuer            # Issuer (default) | ClusterIssuer
+        group: cert-manager.io         # default; the group of an external issuer
+      additionalNames:                 # DNS names clients use, besides the in-cluster ones
+        - mydb.company.com
 ```
 
 - **`preferTLS`** encrypts traffic between members and lets clients choose; **`requireTLS`**
@@ -313,16 +316,70 @@ spec:
      (`<instance>-pxc`, `<instance>-haproxy` or `<instance>-proxysql`, and their wildcard
      forms). A cert-manager `Certificate` writing such a secret works, and renewals roll out
      automatically; the operator never replaces secrets it did not create itself;
-  2. a cert-manager `issuer` — a `ClusterIssuer` requires cert-manager installed in the
-     cluster;
+  2. a cert-manager `issuer` — requires cert-manager installed in the cluster. Set `group`
+     (and the matching `kind`) for an external issuer such as AWS Private CA
+     (`awspca.cert-manager.io`) or Google CAS (`cas-issuer.jetstack.io`);
   3. otherwise the operator issues them: through cert-manager with a CA of its own when
      cert-manager is installed (renewed automatically), or else from a CA it generates once.
 
   The certificate source can't be changed after creation: a new CA would split members
   still trusting the old one.
+- **`additionalNames`** adds DNS names (no IP addresses) to the issued or generated
+  certificates, for clients that reach the cluster under another name, such as an exposed
+  proxy behind `mydb.company.com`. It can't be combined with `certificateSecretName`, whose
+  certificate carries its own names. Changing it on a running cluster reissues the
+  certificates from the same issuer and restarts the pods, so it holds for a
+  `tls-names-<hash>` maintenance approval (a rolling restart; see
+  `status.pendingMaintenance`). That needs certificates issued by cert-manager: on a cluster
+  whose certificates come from the CA the operator generated without it, the names can only
+  be set at creation.
 - **Clients** authenticate with their password and need only the CA to verify the cluster:
   the connection secret (`<instance>-conn`) carries it as `ca.crt`, and its `uri` sets `tls`
   to match the mode.
+
+#### Bring your own CA
+
+To have clients connect to `mydb.company.com` with full verification against your company CA,
+give cert-manager the CA and let it sign the cluster's certificates:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: company-ca
+  namespace: cert-manager          # the cluster resource namespace of cert-manager
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64 CA certificate>
+  tls.key: <base64 CA key>
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: company-ca
+spec:
+  ca:
+    secretName: company-ca
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: mydb
+spec:
+  # ...
+  parameters:
+    tls:
+      mode: requireTLS
+      issuer:
+        name: company-ca
+        kind: ClusterIssuer
+      additionalNames:
+        - mydb.company.com
+```
+
+Point `mydb.company.com` at the address clients reach the proxy on (for example its exposed
+load balancer). Clients then verify the server against `ca.crt` from `mydb-conn`, for
+instance `mysql --ssl-mode=VERIFY_IDENTITY --ssl-ca=ca.crt -h mydb.company.com …`.
 
 ## Development
 
@@ -368,9 +425,10 @@ code generation, and the backup/restore interfaces are documented once for all p
   `make test-integration-core-tls`, `make test-integration-backup`, …). The operator is
   scaled to 0 and status is simulated.
 - **E2E cluster tests** — `test/e2e-cluster/` runs against a real PXC operator (`core/tls`,
-  `datasource/backup`). Not executed on default CI runners; use `make deploy-provider-e2e`
-  then `make test-e2e-cluster` (or `make test-e2e-cluster-core-tls` for just the TLS suite)
-  locally.
+  `core/tls-issuer`, `datasource/backup`). Not executed on default CI runners; use
+  `make deploy-provider-e2e` then `make test-e2e-cluster` (or `make test-e2e-cluster-core-tls`
+  / `make test-e2e-cluster-core-tls-issuer` for just a TLS suite; the latter installs
+  cert-manager when absent) locally.
 - **CI** — [.github/workflows/ci.yaml](.github/workflows/ci.yaml) runs lint, build, unit
   tests, generated-file verification, Helm lint, and each integration suite on every pull
   request.

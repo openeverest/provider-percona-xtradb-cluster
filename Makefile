@@ -179,6 +179,10 @@ test-e2e-cluster-datasource-backup: ## Run backup datasource e2e-cluster test (r
 test-e2e-cluster-core-tls: ## Run the TLS e2e-cluster test (requires a running PXC operator).
 	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/core/tls
 
+.PHONY: test-e2e-cluster-core-tls-issuer
+test-e2e-cluster-core-tls-issuer: ## Run the bring-your-own-CA TLS e2e-cluster test (requires a running PXC operator; installs cert-manager if absent).
+	. ./test/vars.sh && chainsaw test --config ./test/e2e-cluster/.chainsaw.yaml ./test/e2e-cluster/core/tls-issuer
+
 .PHONY: load-image
 load-image: ## Import the provider image (IMG) into the k3d cluster.
 	k3d image import ${IMG} -c ${K3D_CLUSTER_NAME}

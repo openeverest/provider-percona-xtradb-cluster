@@ -287,6 +287,9 @@ func SyncPXC(c *controller.Context) error {
 	if err := gateTLSToggle(c, pxc); err != nil {
 		return fmt.Errorf("configure TLS: %w", err)
 	}
+	if err := gateTLSNames(c, pxc, tls); err != nil {
+		return fmt.Errorf("configure TLS: %w", err)
+	}
 	// gateTLSToggle may have held the enable/disable change back: require
 	// require_secure_transport only once TLS is actually enabled, or MySQL
 	// would reject every connection.

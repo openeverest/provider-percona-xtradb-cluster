@@ -1,0 +1,25 @@
+# The new names wait for approval: certificates and cluster keep the old ones.
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-issuer
+status:
+  (length(pendingMaintenance[?starts_with(approvalToken, 'tls-names-')])): 1
+  (pendingMaintenance[?starts_with(approvalToken, 'tls-names-')] | [0].severity): RollingRestart
+---
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-issuer
+spec:
+  tls:
+    SANs:
+      - db.example.com
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pxc-issuer-ssl
+spec:
+  (contains(dnsNames, 'db.example.com')): true
+  (contains(dnsNames, 'db2.example.com')): false
