@@ -101,6 +101,15 @@ provider:
   # -- The name to register for the Provider custom resource
   name: percona-xtradb-cluster
 
+openeverest:
+  # -- Annotations to add to the objects of this chart that OpenEverest
+  # interprets: the Provider and its BackupClass. Keys under openeverest.io/
+  # belong to the chart and to OpenEverest, and are refused.
+  annotations: {}
+    # For example, to have Argo CD apply these objects before the provider's
+    # Deployment and the bundled operator:
+    # argocd.argoproj.io/sync-wave: "-1"
+
 # -- Additional environment variables to set on the provider container
 extraEnv: []
 # - name: MY_VAR

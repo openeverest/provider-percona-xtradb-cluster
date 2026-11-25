@@ -499,8 +499,8 @@ github.com/openeverest/monitoring-pmm/api v0.0.0-20261110082751-22ff528eb0dc h1:
 github.com/openeverest/monitoring-pmm/api v0.0.0-20261110082751-22ff528eb0dc/go.mod h1:LU0WsxUAvP6+39FZDCCXYW4lOrTuDb67/U7ZSJXz1LQ=
 github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261125163324-baa7302420dd h1:CRSrXH7C9sN+uqNmqkI+28F42/s4/DrckMttD62yGiA=
 github.com/openeverest/openeverest/v2 v2.0.0-dev.2.0.20261125163324-baa7302420dd/go.mod h1:ZO1pt2uTExw6WH7oyZFmYLIFeauS+vDjVDztTY8BGgc=
-github.com/openeverest/provider-sdk v0.4.1-0.20261125164134-84eb5fe3608e h1:IRDSYI/B3G52SWX3OOaqKvnlUK/2ZCnvUliqwAHs82Q=
-github.com/openeverest/provider-sdk v0.4.1-0.20261125164134-84eb5fe3608e/go.mod h1:Q+Ridn2M4fgMVvZC6hjLBbKlYdhY5au98gu9EcChCYk=
+github.com/openeverest/provider-sdk v0.4.1-0.20261125181151-9bdf7ebde95a h1:PJglKWSzPYdgvR5i4gnTa6jwgoMKaQHwQJa6RcbnZDM=
+github.com/openeverest/provider-sdk v0.4.1-0.20261125181151-9bdf7ebde95a/go.mod h1:Q+Ridn2M4fgMVvZC6hjLBbKlYdhY5au98gu9EcChCYk=
 github.com/otiai10/copy v1.2.0/go.mod h1:rrF5dJ5F0t/EWSYODDu4j9/vEeYHMkc8jt0zJChqQWw=
 github.com/otiai10/copy v1.14.0 h1:dCI/t1iTdYGtkvCuBG2BgR6KZa83PTclw4U5n2wAllU=
 github.com/otiai10/copy v1.14.0/go.mod h1:ECfuL02W+/FkTWZWgQqXPWZgW9oeKCSQ5qVfSc4qc4w=
