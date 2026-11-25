@@ -362,6 +362,9 @@ func SyncPXC(c *controller.Context) error {
 	if err := applyMonitoring(c, pxc, spec); err != nil {
 		return err
 	}
+	if err := syncMonitorCredential(c, usersSecretName); err != nil {
+		return err
+	}
 
 	// When seeding from a DataSource, the target cluster's users secret must
 	// contain the same credentials as the source cluster: the restored datadir

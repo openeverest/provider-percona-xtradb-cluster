@@ -96,6 +96,7 @@ spec:
       haproxy:
         metrics: Native
       pxc:
+        connection: Supported
         metrics: Exporter
     integrations:
       pmm:
