@@ -37,7 +37,6 @@ const pmmIntegration = pmm.IntegrationName
 // haproxyMetricsPort is where the operator's HAProxy serves /metrics.
 const haproxyMetricsPort = 8404
 
-
 // MonitoringIntegrations implements controller.MonitoringIntegrationsProvider.
 func (p *PXCProvider) MonitoringIntegrations() []string {
 	return []string{pmmIntegration}
@@ -46,7 +45,8 @@ func (p *PXCProvider) MonitoringIntegrations() []string {
 // MonitoringSources implements controller.MonitoringSourcesProvider. It
 // publishes HAProxy's own endpoint and, while the engine pods carry the
 // mysqld_exporter sidecar, the exporter's, each while a pod of its component
-// is ready.
+// is ready, and while a class requires connections the operator's monitor
+// user and the PXC nodes' connection endpoint.
 func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.MonitoringSources, error) {
 	sources := &corev1alpha1.MonitoringSources{}
 	pxc := &pxcv1.PerconaXtraDBCluster{}
@@ -70,6 +70,11 @@ func (p *PXCProvider) MonitoringSources(c *controller.Context) (*corev1alpha1.Mo
 			Scheme: "http",
 		})
 	}
+	credentials, connections, err := monitorConnectionSources(c, pxc)
+	if err != nil {
+		return nil, err
+	}
+	sources.Credentials, sources.Connections = credentials, connections
 	if pxc.Spec.HAProxyEnabled() && pxc.Status.HAProxy.Ready > 0 {
 		sources.Metrics = append(sources.Metrics, corev1alpha1.MetricsEndpoint{
 			Component: common.ComponentProxy,

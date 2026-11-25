@@ -67,7 +67,7 @@ provider itself is covered under [Installation](#installation).
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
 | Exposure | ✅ | `spec.components.<name>.service.serviceType`: `ClusterIP` (default), `LoadBalancer` or `NodePort`, for `engine` and `proxy` independently. `proxy.service` controls how clients reach HAProxy/ProxySQL and is how most clients should connect; `engine.service` exposes the PXC members' own Service directly, bypassing the proxy, for clients that need a direct connection to a specific node. `service.annotations` and, for `LoadBalancer`, `service.loadBalancerService.sourceRanges` are also supported on both, but only via the `Instance` spec directly — the UI doesn't expose them yet ([openeverest#1959](https://github.com/openeverest/openeverest/issues/1959), [openeverest#2398](https://github.com/openeverest/openeverest/issues/2398)) |
-| Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints for other monitoring classes, see [Monitoring](#monitoring) |
+| Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints, and the `monitor` user for agents that log in, for other monitoring classes, see [Monitoring](#monitoring) |
 | TLS | ✅ | on by default; generated, cert-manager or your own certificates — see [TLS](#tls) |
 
 Stateful workloads additionally report:
@@ -283,6 +283,14 @@ monitoring extension.
   them one at a time); it connects as the operator's `monitor` user. Once the cluster is
   Ready the exporter and HAProxy's own `/metrics` endpoint are published in
   `status.monitoring.sources`.
+- **Classes whose agents log in** (Releem, …): while one is bound, the provider copies the
+  operator's `monitor` user (the one PMM uses: `SELECT`, `PROCESS`, `REPLICATION CLIENT`,
+  `SUPER` and `RELOAD` on `*.*`) into `<instance>-monitoring-monitor`, a
+  `kubernetes.io/basic-auth` Secret owned by the Instance, and publishes it under the
+  `monitor` credential profile with one connection endpoint for the PXC nodes (container
+  `pxc`, port `mysql`, TLS required when `tls.mode` is `requireTLS`). The users Secret also
+  holds root, so it is never published itself. Every Sync copies the current password, and
+  the copy is deleted once no listed destination needs it. Nothing restarts.
 
 ### TLS
 

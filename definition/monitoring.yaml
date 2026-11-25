@@ -14,5 +14,8 @@ integrations:
 componentTypes:
   pxc:
     metrics: Exporter
+    # While a bound class requires connections, the provider publishes the
+    # operator's monitor user (the one PMM uses) and one endpoint per PXC node.
+    connection: Supported
   haproxy:
     metrics: Native
