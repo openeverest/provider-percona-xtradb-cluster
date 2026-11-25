@@ -1,0 +1,30 @@
+# A cluster whose certificates a company CA signs through a cert-manager
+# ClusterIssuer, valid for the external name clients use as well. See the
+# README section "Bring your own CA".
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: mydb
+  namespace: default
+spec:
+  providerRef:
+    name: percona-xtradb-cluster
+  topology:
+    type: cluster
+  components:
+    engine:
+      replicas: 3
+      storage:
+        size: 10Gi
+    proxy:
+      type: haproxy
+      replicas: 2
+  parameters:
+    tls:
+      mode: requireTLS
+      issuer:
+        name: company-ca
+        kind: ClusterIssuer
+        # group: awspca.cert-manager.io   # for an external issuer, with its kind
+      additionalNames:
+        - mydb.company.com

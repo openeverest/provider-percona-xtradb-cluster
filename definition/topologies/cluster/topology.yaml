@@ -236,7 +236,7 @@ ui:
                   path: spec.parameters.tls.issuer.name
                   fieldParams:
                     label: "cert-manager issuer"
-                    helperText: "Issuer that signs the certificates"
+                    helperText: "Issuer that signs the certificates. External issuers (spec.parameters.tls.issuer.group) and additional DNS names (spec.parameters.tls.additionalNames) are set in YAML"
                     modes:
                       edit:
                         disabled: true
