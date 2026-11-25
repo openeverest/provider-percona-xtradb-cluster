@@ -35,6 +35,14 @@
     - create
     - patch
 - apiGroups:
+    - apiextensions.k8s.io
+  resourceNames:
+    - providers.core.openeverest.io
+  resources:
+    - customresourcedefinitions
+  verbs:
+    - get
+- apiGroups:
     - apps
   resources:
     - statefulsets
@@ -137,6 +145,14 @@
     - get
     - list
     - watch
+- apiGroups:
+    - core.openeverest.io
+  resourceNames:
+    - percona-xtradb-cluster
+  resources:
+    - providers/status
+  verbs:
+    - patch
 - apiGroups:
     - monitoring.openeverest.io
   resources:
