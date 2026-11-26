@@ -1,13 +1,9 @@
 {{/*
 Renders every BackupClass manifest produced by `provider-sdk generate` from
-definition/backupclasses/, stamped with the provider release and the
-OpenEverest it is built against, and with the acknowledgement of
-compatibility.acknowledge.coreVersion when it is set: OpenEverest reads the
-acknowledgement on each object it admits, so the BackupClasses need it as much
-as the Provider does. One YAML document per file; the generator writes
+definition/backupclasses/. One YAML document per file; the generator writes
 deterministic, sorted output so Helm diffs stay clean.
 */}}
 {{- range $path, $_ := .Files.Glob "generated/backupclasses/*.yaml" }}
 ---
-{{ include "openeverest.contract.generatedObject" (dict "root" $ "path" $path) }}
+{{ $.Files.Get $path }}
 {{- end }}
