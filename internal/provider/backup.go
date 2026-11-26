@@ -57,6 +57,15 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		Kind:  "PerconaXtraDBClusterBackup",
 		Name:  backup.Name,
 	}
+
+	if err := validateBackupParameters(backup.Spec.Parameters); err != nil {
+		return controller.BackupExecutionStatus{
+			State:             backupv1alpha1.BackupStateFailed,
+			Message:           fmt.Sprintf("spec.parameters: %v", err),
+			OperatorBackupRef: opRef,
+		}, nil
+	}
+
 	managedByRuntime := backup.Spec.ScheduleName == ""
 	ensureBackupControllerReference := func(opBackup *pxcv1.PerconaXtraDBClusterBackup) error {
 		if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
@@ -216,6 +225,14 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		Group: pxcv1.SchemeGroupVersion.Group,
 		Kind:  "PerconaXtraDBClusterRestore",
 		Name:  restore.Name,
+	}
+
+	if err := validateRestoreParameters(restore.Spec.Parameters); err != nil {
+		return controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            fmt.Sprintf("spec.parameters: %v", err),
+			OperatorRestoreRef: opRef,
+		}, nil
 	}
 
 	opBackupName, desiredPITR, pending, err := resolveRestoreSource(c, restore, opRef)

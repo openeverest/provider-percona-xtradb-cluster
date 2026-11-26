@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	apicommon "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller/validationtest"
 
@@ -57,6 +58,23 @@ func pitr(parameters ...string) func(*corev1alpha1.Instance) {
 				s.PITR.Parameters = &runtime.RawExtension{Raw: []byte(raw)}
 			}
 			in.Spec.Backup.Storages = append(in.Spec.Backup.Storages, s)
+		}
+	}
+}
+
+// schedules gives the Instance one backup storage with the given schedules,
+// all enabled.
+func schedules(list ...corev1alpha1.InstanceBackupSchedule) func(*corev1alpha1.Instance) {
+	return func(in *corev1alpha1.Instance) {
+		for i := range list {
+			list[i].Enabled = true
+		}
+		in.Spec.Backup = &corev1alpha1.InstanceBackupSpec{
+			Enabled: true,
+			Storages: []corev1alpha1.InstanceBackupStorage{{
+				StorageRef: apicommon.ObjectRef{Name: "s3-a"},
+				Schedules:  list,
+			}},
 		}
 	}
 }
@@ -130,6 +148,32 @@ func TestValidate(t *testing.T) {
 			name:   "PITR uploads more often than once a second",
 			mutate: pitr(`{"timeBetweenUploads":0}`),
 			want:   []string{"spec.backup.storages[0].pitr.parameters"},
+		},
+		{
+			name:   "schedule name is an arbitrary user-facing identifier",
+			mutate: schedules(corev1alpha1.InstanceBackupSchedule{Name: "nightly-full", Cron: "0 1 * * *"}),
+		},
+		{
+			name: "two schedules on the same storage are allowed",
+			mutate: schedules(
+				corev1alpha1.InstanceBackupSchedule{Name: "weekly", Cron: "0 1 * * 0"},
+				corev1alpha1.InstanceBackupSchedule{Name: "monthly", Cron: "0 1 1 * *"},
+			),
+		},
+		{
+			name: "duplicate schedule name",
+			mutate: schedules(
+				corev1alpha1.InstanceBackupSchedule{Name: "nightly", Cron: "0 1 * * *"},
+				corev1alpha1.InstanceBackupSchedule{Name: "nightly", Cron: "0 2 * * *"},
+			),
+			want: []string{"spec.backup.storages[0].schedules[1].name"},
+		},
+		{
+			name: "schedule parameters with an undeclared field",
+			mutate: schedules(corev1alpha1.InstanceBackupSchedule{
+				Name: "nightly", Cron: "0 1 * * *", Parameters: &runtime.RawExtension{Raw: []byte(`{"compress":true}`)},
+			}),
+			want: []string{"spec.backup.storages[0].schedules[0].parameters"},
 		},
 	}
 

@@ -60,6 +60,7 @@ func (p *PXCProvider) Validate(in controller.ValidationInput) controller.Validat
 	}
 
 	errs = append(errs, validatePITR(instance.Spec.Backup)...)
+	errs = append(errs, validateBackupSchedules(instance.Spec.Backup)...)
 
 	tls, err := tlsParameters(instance)
 	if err != nil {
