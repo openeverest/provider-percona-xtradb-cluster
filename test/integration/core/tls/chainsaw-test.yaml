@@ -42,8 +42,9 @@ spec:
             file: 10-assert.yaml
 
     # Create the users secret, then simulate the cluster becoming ready. The
-    # secret must exist before the status patch triggers reconcile, otherwise
-    # connection details fail and the Instance cannot become Ready.
+    # secret is created first because the provider reads it for the
+    # connection details as soon as the cluster is ready, and would otherwise
+    # fail and retry with a growing delay.
     - name: cluster-ready
       try:
         - apply:
@@ -68,10 +69,8 @@ spec:
               # the existing PerconaXtraDBCluster CR), checked by
               # ValidateReferences rather than the pure Validate, and surfaced
               # with reason InvalidReference rather than ValidationFailed. The
-              # Instance is already Ready: a rejected change keeps the
-              # provider's Ready condition out of the Phase (see
-              # api/core/v1alpha1/instance_types.go's ConditionReady doc), so we
-              # wait on the condition rather than status.phase.
+              # Instance has been available, so its phase stays Provisioned:
+              # we wait on the Ready condition instead.
               kubectl wait instance/test-pxc-tls -n "$NAMESPACE" \
                 --for=jsonpath='{.status.conditions[?(@.type=="Ready")].reason}'=InvalidReference --timeout=30s
         - assert:
@@ -94,9 +93,8 @@ spec:
             file: 30-create-cluster-incomplete-secret.yaml
         - script:
             content: |
-              # A brand-new Instance stays Pending while blocked (see block()
-              # in provider-runtime/reconciler/ready.go); the rejection is
-              # surfaced on the Ready condition, not status.phase. The secret's
+              # A brand-new Instance blocked by validation stays Pending; the
+              # rejection is reported on the Ready condition. The secret's
               # missing key is a cluster-aware rule (ValidateReferences reads
               # the secret itself), so the reason is InvalidReference rather
               # than ValidationFailed.

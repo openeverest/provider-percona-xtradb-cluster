@@ -1,0 +1,32 @@
+# A CA Issuer in the test namespace standing in for a company CA: a
+# self-signed issuer makes the CA certificate, the CA issuer signs with it.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: company-ca
+spec:
+  isCA: true
+  commonName: company-ca
+  secretName: company-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: company-ca
+spec:
+  ca:
+    secretName: company-ca

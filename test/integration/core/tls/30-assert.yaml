@@ -3,9 +3,8 @@ kind: Instance
 metadata:
   name: test-pxc-tls-badsecret
 status:
-  # A brand-new Instance blocked by validation stays Pending (see block() in
-  # provider-runtime/reconciler/ready.go); the rejection is surfaced on the
-  # Ready condition instead of status.phase.
+  # A brand-new Instance blocked by validation has never been available, so
+  # it stays Pending; the rejection is reported on the Ready condition.
   phase: Pending
   (conditions[?type == 'Ready'].status | [0]): "False"
   (conditions[?type == 'Ready'].reason | [0]): InvalidReference

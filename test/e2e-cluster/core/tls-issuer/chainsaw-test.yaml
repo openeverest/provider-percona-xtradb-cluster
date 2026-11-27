@@ -1,0 +1,195 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: core-tls-issuer
+spec:
+  description: |
+    Bring your own CA against a real PXC operator and cert-manager: a CA
+    Issuer signs the cluster's certificates (issuer with an explicit group)
+    for an additional DNS name. Clients verify the server against ca.crt
+    from the connection secret, and plain connections are refused
+    (requireTLS). Changing additionalNames on the running cluster waits for
+    the tls-names-<hash> maintenance approval, then reissues both
+    certificates from the same CA, and the cluster rolls and stays usable.
+    Installs cert-manager when it is absent.
+  catch:
+    - script:
+        content: kubectl -n $NAMESPACE get instance,pxc.pxc.percona.com,certificates.cert-manager.io -o yaml
+    - podLogs:
+        namespace: provider-system
+        selector: app.kubernetes.io/name=provider-percona-xtradb-cluster
+        tail: 100
+  steps:
+    - name: provider-operator-installed
+      try:
+        - assert:
+            file: 00-assert.yaml
+
+    - name: cert-manager-installed
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              set -e
+              if ! kubectl get crd certificates.cert-manager.io >/dev/null 2>&1; then
+                kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.3/cert-manager.yaml
+              fi
+              kubectl -n cert-manager wait --for=condition=Available deploy --all --timeout=240s
+
+    - name: company-ca-issuer
+      try:
+        - apply:
+            file: 05-issuer.yaml
+        - wait:
+            apiVersion: cert-manager.io/v1
+            kind: Certificate
+            name: company-ca
+            timeout: 120s
+            for:
+              condition:
+                name: Ready
+                value: 'true'
+
+    - name: create-cluster
+      try:
+        - apply:
+            file: 10-create-cluster.yaml
+        - assert:
+            file: 10-assert.yaml
+
+    - name: cluster-ready
+      try:
+        - assert:
+            timeout: 15m
+            file: 20-assert.yaml
+      catch:
+        - script:
+            content: |
+              kubectl -n "${NAMESPACE}" get pods,pvc,pxc.pxc.percona.com,instance -o wide
+              kubectl -n "${NAMESPACE}" describe pod -l app.kubernetes.io/component=pxc || true
+
+    - name: certificate-from-company-ca-with-additional-name
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR="/tmp/pxc-tls-issuer-e2e-${NAMESPACE}"
+              rm -rf "${WORKDIR}" && mkdir -p "${WORKDIR}"
+              kubectl get secret/company-ca -n "${NAMESPACE}" -o jsonpath='{.data.tls\.crt}' | base64 -d > "${WORKDIR}/company-ca.crt"
+              kubectl get secret/pxc-issuer-conn -n "${NAMESPACE}" -o jsonpath='{.data.ca\.crt}' | base64 -d > "${WORKDIR}/conn-ca.crt"
+              diff "${WORKDIR}/company-ca.crt" "${WORKDIR}/conn-ca.crt"
+              for s in pxc-issuer-ssl pxc-issuer-ssl-internal; do
+                kubectl get secret/$s -n "${NAMESPACE}" -o jsonpath='{.data.tls\.crt}' | base64 -d > "${WORKDIR}/$s.crt"
+                openssl verify -CAfile "${WORKDIR}/company-ca.crt" "${WORKDIR}/$s.crt"
+                openssl x509 -in "${WORKDIR}/$s.crt" -noout -ext subjectAltName | grep -q 'DNS:db.example.com'
+              done
+              echo "certificates signed by the company CA, valid for db.example.com; conn secret carries the CA"
+
+    - name: create-mysql-client
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              IMAGE="$(kubectl get pxc.pxc.percona.com/pxc-issuer -n "${NAMESPACE}" -o jsonpath='{.spec.pxc.image}')"
+              kubectl run -n "${NAMESPACE}" mysql-tls-client --env="NO_COLOR=1" --image="${IMAGE}" --image-pull-policy=IfNotPresent --restart=Never --command -- sleep 3600
+              kubectl wait --for=condition=Ready pod/mysql-tls-client --timeout=150s -n "${NAMESPACE}"
+
+    - name: client-verifies-server-and-plain-is-refused
+      try:
+        - script:
+            timeout: 60s
+            content: &verify |
+              set -e
+              CONN="kubectl get secret/pxc-issuer-conn -n ${NAMESPACE} -o jsonpath"
+              HOST="$($CONN='{.data.host}' | base64 -d)"
+              USER="$($CONN='{.data.username}' | base64 -d)"
+              PASS="$($CONN='{.data.password}' | base64 -d)"
+              $CONN='{.data.ca\.crt}' | base64 -d | kubectl exec -i mysql-tls-client -n ${NAMESPACE} -- sh -c 'cat > /tmp/ca.crt'
+              CIPHER="$(kubectl exec mysql-tls-client -n ${NAMESPACE} -- \
+                mysql -h "$HOST" -P 3306 -u "$USER" -p"$PASS" --ssl-mode=VERIFY_CA --ssl-ca=/tmp/ca.crt -N -s \
+                -e "SHOW STATUS LIKE 'Ssl_cipher';" | awk '{print $2}')"
+              echo "Ssl_cipher=${CIPHER}"
+              test -n "${CIPHER}"
+              if kubectl exec mysql-tls-client -n ${NAMESPACE} -- \
+                mysql -h "$HOST" -P 3306 -u "$USER" -p"$PASS" --ssl-mode=DISABLED --get-server-public-key -e 'SELECT 1'; then
+                echo "unexpected: a plain connection was accepted with requireTLS" >&2
+                exit 1
+              fi
+
+    - name: names-change-waits-for-approval
+      try:
+        - patch:
+            resource:
+              apiVersion: core.openeverest.io/v1alpha1
+              kind: Instance
+              metadata:
+                name: pxc-issuer
+              spec:
+                parameters:
+                  tls:
+                    additionalNames:
+                      - db2.example.com
+        - assert:
+            timeout: 120s
+            file: 40-assert.yaml
+
+    - name: approved-names-change-reissues-certificates
+      try:
+        - script:
+            content: |
+              set -e
+              TOKEN="$(kubectl get instance/pxc-issuer -n "${NAMESPACE}" -o jsonpath='{.status.pendingMaintenance[0].approvalToken}')"
+              echo "approving ${TOKEN}"
+              kubectl get pod/pxc-issuer-pxc-0 -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}' \
+                > "/tmp/pxc-tls-issuer-e2e-${NAMESPACE}/pxc-0.uid"
+              kubectl patch instance/pxc-issuer -n "${NAMESPACE}" --type=merge \
+                -p "{\"spec\":{\"maintenance\":{\"approved\":\"${TOKEN}\"}}}"
+        - assert:
+            timeout: 15m
+            file: 50-assert.yaml
+        - script:
+            timeout: 600s
+            content: |
+              set -e
+              WORKDIR="/tmp/pxc-tls-issuer-e2e-${NAMESPACE}"
+              for s in pxc-issuer-ssl pxc-issuer-ssl-internal; do
+                for i in $(seq 1 60); do
+                  kubectl get secret/$s -n "${NAMESPACE}" -o jsonpath='{.data.tls\.crt}' | base64 -d > "${WORKDIR}/$s.crt"
+                  openssl x509 -in "${WORKDIR}/$s.crt" -noout -ext subjectAltName | grep -q 'DNS:db2.example.com' && break
+                  sleep 5
+                done
+                openssl x509 -in "${WORKDIR}/$s.crt" -noout -ext subjectAltName | grep -q 'DNS:db2.example.com'
+                if openssl x509 -in "${WORKDIR}/$s.crt" -noout -ext subjectAltName | grep -q 'DNS:db.example.com'; then
+                  echo "unexpected: $s still carries db.example.com" >&2
+                  exit 1
+                fi
+                openssl verify -CAfile "${WORKDIR}/company-ca.crt" "${WORKDIR}/$s.crt"
+              done
+              # The operator restarts the PXC pods (OnDelete statefulset) onto
+              # the new certificates.
+              OLD_UID="$(cat "${WORKDIR}/pxc-0.uid")"
+              for i in $(seq 1 100); do
+                UID_NOW="$(kubectl get pod/pxc-issuer-pxc-0 -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+                [ -n "${UID_NOW}" ] && [ "${UID_NOW}" != "${OLD_UID}" ] && break
+                sleep 5
+              done
+              [ "${UID_NOW}" != "${OLD_UID}" ]
+
+    - name: client-verifies-server-after-reissue
+      try:
+        - assert:
+            timeout: 10m
+            file: 60-assert.yaml
+        - script:
+            timeout: 60s
+            content: *verify
+
+    - name: cleanup
+      try:
+        - script:
+            timeout: 180s
+            content: |
+              kubectl delete pod/mysql-tls-client -n $NAMESPACE --ignore-not-found --wait=false || true
+              kubectl delete instance/pxc-issuer -n $NAMESPACE --ignore-not-found --wait=true --timeout=150s || true
+              rm -rf "/tmp/pxc-tls-issuer-e2e-${NAMESPACE}" || true

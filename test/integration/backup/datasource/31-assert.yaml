@@ -3,7 +3,10 @@ kind: Instance
 metadata:
   name: src-pxc-cluster
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
+  (conditions[?type == 'Restoring'].status | [0]): "False"
+  (conditions[?type == 'Restoring'].reason | [0]): Succeeded
 ---
 apiVersion: backup.openeverest.io/v1alpha1
 kind: Restore

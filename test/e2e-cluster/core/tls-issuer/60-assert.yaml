@@ -1,0 +1,32 @@
+# Ready again after the reissue, now with the new name.
+apiVersion: pxc.percona.com/v1
+kind: PerconaXtraDBCluster
+metadata:
+  name: pxc-issuer
+status:
+  state: ready
+  pxc:
+    ready: 1
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: pxc-issuer
+status:
+  (conditions[?type == 'Ready'].status | [0]): "True"
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pxc-issuer-ssl
+spec:
+  issuerRef:
+    name: company-ca
+  (contains(dnsNames, 'db2.example.com')): true
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pxc-issuer-ssl-internal
+spec:
+  (contains(dnsNames, 'db2.example.com')): true

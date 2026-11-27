@@ -7,6 +7,6 @@ spec:
     tls:
       certificateSecretName: test-pxc-tls-certs
 status:
-  phase: Ready
+  phase: Provisioned
   (conditions[?type == 'Ready'].status | [0]): "True"
 

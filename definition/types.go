@@ -77,6 +77,15 @@ type TLSParameters struct {
 	// certificates, instead of a self-signed CA created for the cluster.
 	// +optional
 	Issuer *IssuerReference `json:"issuer,omitempty"`
+
+	// AdditionalNames are DNS names clients use to reach the cluster, such
+	// as mydb.company.com, added to the in-cluster names of the generated
+	// or issued certificates. Not with certificateSecretName: that
+	// certificate carries its own names. Changing them on a running cluster
+	// reissues the certificates and restarts its pods, so it waits for
+	// maintenance approval, and needs certificates issued by cert-manager.
+	// +optional
+	AdditionalNames []string `json:"additionalNames,omitempty"`
 }
 
 // IssuerKind is the kind of a cert-manager issuer.
@@ -90,14 +99,22 @@ const (
 	IssuerKindClusterIssuer IssuerKind = "ClusterIssuer"
 )
 
-// IssuerReference refers to a cert-manager issuer.
+// IssuerReference refers to a cert-manager issuer, or an external issuer
+// cert-manager supports.
 type IssuerReference struct {
 	// Name of the issuer.
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Kind of the issuer.
+	// Kind of the issuer: Issuer or ClusterIssuer, or the kind of an
+	// external issuer of group.
 	// +default="Issuer"
 	// +optional
 	Kind IssuerKind `json:"kind,omitempty"`
+
+	// Group is the API group of an external issuer, such as
+	// awspca.cert-manager.io.
+	// +default="cert-manager.io"
+	// +optional
+	Group string `json:"group,omitempty"`
 }

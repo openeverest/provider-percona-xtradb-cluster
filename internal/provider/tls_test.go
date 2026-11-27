@@ -18,6 +18,8 @@ import (
 	"context"
 	"testing"
 
+	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
+
 	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
 	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	"github.com/openeverest/provider-percona-xtradb-cluster/definition"
@@ -26,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -157,6 +160,173 @@ func TestConfigureTLSIssuer(t *testing.T) {
 	assert.Equal(t, certManagerGroup, pxc.Spec.TLS.IssuerConf.Group)
 }
 
+func TestTLSParametersDefaultsIssuerGroup(t *testing.T) {
+	t.Parallel()
+
+	c := tlsContext(t, `{"tls":{"issuer":{"name":"corp-ca"}}}`)
+	tls, err := tlsParameters(c.Instance())
+	require.NoError(t, err)
+	assert.Equal(t, certManagerGroup, tls.Issuer.Group)
+}
+
+func TestConfigureTLSExternalIssuerAndNames(t *testing.T) {
+	t.Parallel()
+
+	c := tlsContext(t, "")
+	pxc := &pxcv1.PerconaXtraDBCluster{}
+	configureTLS(c, pxc, definition.TLSParameters{
+		Mode:            definition.TLSModePrefer,
+		Issuer:          &definition.IssuerReference{Name: "pca", Kind: "AWSPCAClusterIssuer", Group: "awspca.cert-manager.io"},
+		AdditionalNames: []string{"db.example.com"},
+	})
+
+	assert.Equal(t, "awspca.cert-manager.io", pxc.Spec.TLS.IssuerConf.Group)
+	assert.Equal(t, "AWSPCAClusterIssuer", pxc.Spec.TLS.IssuerConf.Kind)
+	assert.Equal(t, []string{"db.example.com"}, pxc.Spec.TLS.SANs)
+}
+
+// existingPXC is the cluster's current PerconaXtraDBCluster with TLS enabled
+// and the given additional names.
+func existingPXC(names ...string) *pxcv1.PerconaXtraDBCluster {
+	enabled := true
+	return &pxcv1.PerconaXtraDBCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: tlsTestInstance, Namespace: tlsTestNamespace},
+		Spec:       pxcv1.PerconaXtraDBClusterSpec{TLS: &pxcv1.TLSSpec{Enabled: &enabled, SANs: names}},
+	}
+}
+
+// operatorCertificate is a cert-manager Certificate the operator created.
+func operatorCertificate(name string, dnsNames ...string) *unstructured.Unstructured {
+	cert := &unstructured.Unstructured{}
+	cert.SetGroupVersionKind(certificateGVK)
+	cert.SetName(name)
+	cert.SetNamespace(tlsTestNamespace)
+	names := make([]any, 0, len(dnsNames))
+	for _, n := range dnsNames {
+		names = append(names, n)
+	}
+	cert.Object["spec"] = map[string]any{"dnsNames": names}
+	return cert
+}
+
+func certificateNames(t *testing.T, c *controller.Context, name string) []string {
+	t.Helper()
+	cert, err := getCertificate(c, name)
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+	names, _, err := unstructured.NestedStringSlice(cert.Object, "spec", "dnsNames")
+	require.NoError(t, err)
+	return names
+}
+
+func TestGateTLSNamesNewCluster(t *testing.T) {
+	t.Parallel()
+
+	tls := definition.TLSParameters{Mode: definition.TLSModePrefer, AdditionalNames: []string{"db.example.com"}}
+	c := tlsContext(t, "")
+	pxc := &pxcv1.PerconaXtraDBCluster{}
+	configureTLS(c, pxc, tls)
+
+	require.NoError(t, gateTLSNames(c, pxc, tls))
+	assert.Equal(t, []string{"db.example.com"}, pxc.Spec.TLS.SANs)
+	assert.Empty(t, c.GetPendingMaintenance())
+}
+
+func TestGateTLSNamesHoldsUnapprovedChange(t *testing.T) {
+	t.Parallel()
+
+	tls := definition.TLSParameters{Mode: definition.TLSModePrefer, AdditionalNames: []string{"new.example.com"}}
+	c := tlsContext(t, "", existingPXC("old.example.com"),
+		operatorCertificate(tlsTestInstance+"-ssl", "db-pxc", "old.example.com"))
+	pxc := &pxcv1.PerconaXtraDBCluster{}
+	configureTLS(c, pxc, tls)
+
+	require.NoError(t, gateTLSNames(c, pxc, tls))
+	assert.Equal(t, []string{"old.example.com"}, pxc.Spec.TLS.SANs)
+	require.Len(t, c.GetPendingMaintenance(), 1)
+	assert.Equal(t, tlsNamesToken(tls.AdditionalNames), c.GetPendingMaintenance()[0].ApprovalToken)
+	assert.Equal(t, controller.MaintenanceRollingRestart, c.GetPendingMaintenance()[0].Severity)
+	assert.Equal(t, []string{"db-pxc", "old.example.com"}, certificateNames(t, c, tlsTestInstance+"-ssl"))
+}
+
+func TestGateTLSNamesReissuesApprovedChange(t *testing.T) {
+	t.Parallel()
+
+	wanted := []string{"new.example.com"}
+	tls := definition.TLSParameters{Mode: definition.TLSModePrefer, AdditionalNames: wanted}
+	c := tlsContext(t, `{"tls":{"additionalNames":["new.example.com"]}}`, existingPXC("old.example.com"),
+		operatorCertificate(tlsTestInstance+"-ssl", "db-pxc", "*.db-pxc", "old.example.com"),
+		operatorCertificate(tlsTestInstance+"-ssl-internal", "db-pxc", "old.example.com", "db-haproxy"))
+	c.Instance().Spec.Maintenance = &corev1alpha1.MaintenanceSpec{Approved: tlsNamesToken(wanted)}
+	pxc := &pxcv1.PerconaXtraDBCluster{}
+	configureTLS(c, pxc, tls)
+
+	require.NoError(t, gateTLSNames(c, pxc, tls))
+	assert.Equal(t, wanted, pxc.Spec.TLS.SANs)
+	assert.Empty(t, c.GetPendingMaintenance())
+	assert.Equal(t, []string{"db-pxc", "*.db-pxc", "new.example.com"}, certificateNames(t, c, tlsTestInstance+"-ssl"))
+	assert.Equal(t, []string{"db-pxc", "db-haproxy", "new.example.com"}, certificateNames(t, c, tlsTestInstance+"-ssl-internal"))
+}
+
+func TestGateTLSNamesKeepsNamesWhileTurningTLSOff(t *testing.T) {
+	t.Parallel()
+
+	tls := definition.TLSParameters{Mode: definition.TLSModeDisabled}
+	c := tlsContext(t, "", existingPXC("old.example.com"))
+	pxc := &pxcv1.PerconaXtraDBCluster{}
+	configureTLS(c, pxc, tls)
+	require.NoError(t, gateTLSToggle(c, pxc))
+
+	require.NoError(t, gateTLSNames(c, pxc, tls))
+	assert.Equal(t, []string{"old.example.com"}, pxc.Spec.TLS.SANs)
+	require.Len(t, c.GetPendingMaintenance(), 1)
+	assert.Equal(t, tlsToggleToken, c.GetPendingMaintenance()[0].ApprovalToken)
+}
+
+func TestValidateReferencesAdditionalNamesChange(t *testing.T) {
+	t.Parallel()
+
+	params := `{"tls":{"additionalNames":["db.example.com"]}}`
+
+	// Certificates issued by cert-manager can be reissued with the names.
+	c := tlsContext(t, params, existingPXC(), operatorCertificate(tlsTestInstance+"-ssl", "db-pxc"))
+	errs, err := (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+
+	// Certificates from the CA the operator generated can't.
+	c = tlsContext(t, params, existingPXC())
+	errs, err = (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.parameters.tls.additionalNames", errs[0].Field)
+
+	// Unchanged names are fine either way.
+	c = tlsContext(t, params, existingPXC("db.example.com"))
+	errs, err = (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+}
+
+func TestValidateReferencesRejectsIssuerGroupChange(t *testing.T) {
+	t.Parallel()
+
+	existing := existingPXC()
+	existing.Spec.TLS.IssuerConf = &cmmeta.IssuerReference{Name: "corp-ca", Kind: "Issuer", Group: certManagerGroup}
+	c := tlsContext(t, `{"tls":{"issuer":{"name":"corp-ca","group":"awspca.cert-manager.io"}}}`, existing)
+
+	errs, err := (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	require.Len(t, errs, 1)
+	assert.Contains(t, errs[0].Error(), "certificates and issuer can't change")
+
+	// The default group matches clusters created before it could be set.
+	c = tlsContext(t, `{"tls":{"issuer":{"name":"corp-ca"}}}`, existing)
+	errs, err = (&PXCProvider{}).ValidateReferences(c)
+	require.NoError(t, err)
+	assert.Empty(t, errs)
+}
+
 func TestGateTLSToggleNewCluster(t *testing.T) {
 	t.Parallel()
 
@@ -260,7 +430,76 @@ func TestValidateTLSParameters(t *testing.T) {
 				CertificateSecretName: "my-tls",
 			},
 			wantField: "spec.parameters.tls",
-			wantErr:   "certificates and issuer apply only with TLS enabled",
+			wantErr:   "apply only with TLS enabled",
+		},
+		{
+			name: "disabled with additional names",
+			tls: definition.TLSParameters{
+				Mode:            definition.TLSModeDisabled,
+				AdditionalNames: []string{"db.example.com"},
+			},
+			wantField: "spec.parameters.tls",
+			wantErr:   "apply only with TLS enabled",
+		},
+		{
+			name: "external issuer of another group ok",
+			tls: definition.TLSParameters{
+				Mode:   definition.TLSModePrefer,
+				Issuer: &definition.IssuerReference{Name: "pca", Kind: "AWSPCAClusterIssuer", Group: "awspca.cert-manager.io"},
+			},
+		},
+		{
+			name: "invalid issuer group",
+			tls: definition.TLSParameters{
+				Mode:   definition.TLSModePrefer,
+				Issuer: &definition.IssuerReference{Name: "pca", Kind: "Issuer", Group: "Not_A_Group"},
+			},
+			wantField: "spec.parameters.tls.issuer.group",
+		},
+		{
+			name: "additional names ok",
+			tls: definition.TLSParameters{
+				Mode:            definition.TLSModePrefer,
+				Issuer:          &definition.IssuerReference{Name: "corp-ca", Kind: definition.IssuerKindIssuer, Group: certManagerGroup},
+				AdditionalNames: []string{"db.example.com", "*.db.example.com"},
+			},
+		},
+		{
+			name: "additional name is an IP",
+			tls: definition.TLSParameters{
+				Mode:            definition.TLSModePrefer,
+				AdditionalNames: []string{"10.0.0.1"},
+			},
+			wantField: "spec.parameters.tls.additionalNames[0]",
+			wantErr:   "not an IP address",
+		},
+		{
+			name: "additional name is not a DNS name",
+			tls: definition.TLSParameters{
+				Mode:            definition.TLSModePrefer,
+				AdditionalNames: []string{"DB_Example"},
+			},
+			wantField: "spec.parameters.tls.additionalNames[0]",
+			wantErr:   "must be a DNS name",
+		},
+		{
+			name: "duplicate additional names",
+			tls: definition.TLSParameters{
+				Mode:            definition.TLSModePrefer,
+				AdditionalNames: []string{"db.example.com", "db.example.com"},
+			},
+			wantField: "spec.parameters.tls.additionalNames[1]",
+			wantErr:   "Duplicate",
+		},
+		{
+			name: "additional names with certificate secret",
+			tls: definition.TLSParameters{
+				Mode:                  definition.TLSModePrefer,
+				CertificateSecretName: "my-tls",
+				AdditionalNames:       []string{"db.example.com"},
+			},
+			wantField: "spec.parameters.tls.additionalNames",
+			wantErr:   "carries its own names",
 		},
 		{
 			name: "internal without external",

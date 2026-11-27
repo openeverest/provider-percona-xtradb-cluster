@@ -17,7 +17,8 @@ kind: Instance
 metadata:
   name: pxc-src
 status:
-  phase: Ready
+  phase: Provisioned
+  (conditions[?type == 'Ready'].status | [0]): "True"
 ---
 apiVersion: pxc.percona.com/v1
 kind: PerconaXtraDBCluster

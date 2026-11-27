@@ -48,7 +48,7 @@ manages pods directly — all lifecycle work is delegated to the operator.
 
 | provider-percona-xtradb-cluster | OpenEverest | Percona Operator for MySQL | Kubernetes |
 |---|---|---|---|
-| `0.5.x` | `2.0.0-dev.5` | `1.20.x` | `1.30` – `1.34` |
+| `0.5.x` | `2.0.0-alpha.1` | `1.20.x` | `1.32` – `1.34` |
 | `0.4.x` | `2.0.0-dev.4` | `1.20.x` | `1.30` – `1.34` |
 | `0.3.x` | `2.0.0-dev.4` | `1.20.x` | `1.30` – `1.34` |
 | `0.2.x` | `2.0.0-dev.3` | `1.20.x` | `1.30` – `1.34` |
@@ -67,7 +67,7 @@ provider itself is covered under [Installation](#installation).
 | Version upgrades | ✅ | of the deployed MySQL version — change `spec.version`; see [Versions](#versions) |
 | Custom configuration | ✅ | `my.cnf` via the engine component's `configuration` parameter |
 | Exposure | ✅ | `spec.components.<name>.service.serviceType`: `ClusterIP` (default), `LoadBalancer` or `NodePort`, for `engine` and `proxy` independently. `proxy.service` controls how clients reach HAProxy/ProxySQL and is how most clients should connect; `engine.service` exposes the PXC members' own Service directly, bypassing the proxy, for clients that need a direct connection to a specific node. `service.annotations` and, for `LoadBalancer`, `service.loadBalancerService.sourceRanges` are also supported on both, but only via the `Instance` spec directly — the UI doesn't expose them yet ([openeverest#1959](https://github.com/openeverest/openeverest/issues/1959), [openeverest#2398](https://github.com/openeverest/openeverest/issues/2398)) |
-| Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints for other monitoring classes, see [Monitoring](#monitoring) |
+| Monitoring | ✅ | `spec.monitoring.destinations[]`: PMM rendered by the provider; HAProxy and `mysqld_exporter` endpoints, and the `monitor` user for agents that log in, for other monitoring classes, see [Monitoring](#monitoring) |
 | TLS | ✅ | on by default; generated, cert-manager or your own certificates — see [TLS](#tls) |
 
 Stateful workloads additionally report:
@@ -88,7 +88,7 @@ The provider chart is published as an OCI artifact to GitHub Container Registry:
 ```bash
 helm install provider-percona-xtradb-cluster \
   oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster \
-  --version 0.3.0 \
+  --version 0.5.0 \
   --namespace everest-system
 ```
 
@@ -109,7 +109,7 @@ Upgrade and uninstall:
 
 ```bash
 helm upgrade provider-percona-xtradb-cluster \
-  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.3.0
+  oci://ghcr.io/openeverest/charts/provider-percona-xtradb-cluster --version 0.5.0
 helm uninstall provider-percona-xtradb-cluster --namespace everest-system
 ```
 
@@ -162,6 +162,51 @@ kubectl get instance my-instance -o jsonpath='{.status.connection}'
 ```
 
 Credentials are in the secret named by `.status.connection.credentialsSecretRef`.
+
+### Status
+
+The provider reports what it observes, and OpenEverest derives the `Instance` conditions from
+it the same way for every provider.
+
+| Condition | What this provider reports |
+|---|---|
+| `Available` | `True` while the PXC nodes, and the HAProxy or ProxySQL pods in front of them, each have a pod the operator counts as ready in the `PerconaXtraDBCluster` status. Otherwise `False`, with reason `NoNodeReady` or `NoProxyReady`. The operator counts only the nodes that run the latest pod template, so early in a rolling update, before the first node has restarted, it is `Unknown` (`ReadyNodesNotCounted`) rather than `False`. It is `False` while a restore runs or the cluster is paused. |
+| `Ready` | `True` once the cluster runs what the `Instance` asks for: the operator reports it ready for the latest generation of the `PerconaXtraDBCluster`, and every StatefulSet runs its latest pod template. Until then the message says what is being waited for. |
+| `Restoring` | `True` while a `Restore` of the `Instance` runs, or a `PerconaXtraDBClusterRestore` created on the operator directly, and while a new `Instance` is seeded from `spec.dataSource`. |
+| `Upgrading` | `True` while a new engine image rolls out. |
+| `StorageResizing` | `True` while the operator grows the volumes of the PXC nodes. |
+
+The connection details Secret is written the first time the database is available, and kept
+current while a change rolls out.
+
+Each component reports `desiredReplicas`, the pods it will have once the cluster runs the `Instance`'s current spec, defaults included: `engine` counts the PXC nodes (3 unless set), `proxy` the HAProxy or ProxySQL pods (2 unless set), and `backup`, which has no pods of its own, is not reported.
+
+A problem makes the `Instance` not `Ready`, with a reason that says what is wrong:
+
+| Reason | Cause |
+|---|---|
+| `PausedOutsideOpenEverest` | `spec.pause` is set on the `PerconaXtraDBCluster`, and neither a restore nor turning TLS on or off, for which the operator pauses the cluster itself, explains it. Nothing but unsetting it there starts the database again. |
+| `AuthenticationFailed` | MySQL rejects the operator's credentials, for example because the users Secret does not match the data. |
+| `ConfigurationRejected` | The operator refuses the cluster's configuration. |
+| `TLSCertificatesNotReady` | The operator cannot get the cluster's certificates. |
+| `ResizeFailed`, `QuotaExceeded` | The volumes of the PXC nodes could not be grown. |
+| `CrashLoopBackOff`, `ImagePullBackOff`, `Unschedulable` | A pod the operator waits for during a rolling update cannot start. |
+| `EngineError` | Any other error the operator reports; the message quotes it. |
+
+Two operator errors are not problems, because the operator retries them on its next pass: a pod that takes longer than the operator's wait limit to restart, and a write that conflicted with another one. While either lasts, the `Instance` waits and says so.
+
+What the provider cannot know:
+
+- **Availability is as old as the operator's last pass over the cluster.** The ready counts
+  are recorded then, and kept when a pass fails.
+- **Operator errors are recognised by fragments of their message.** The operator has no error
+  codes, so a reworded message falls back to `EngineError`. The operator records only the
+  first error after a successful pass, so a later, different one shows the earlier message
+  until a pass succeeds.
+- **An operator error is never a terminal problem**, because the operator does not say which
+  generation it is about.
+- **`Upgrading` is best effort.** It is inferred from the image the nodes run, which the
+  operator records only once they all run the latest pod template.
 
 ## Topologies
 
@@ -238,6 +283,14 @@ monitoring extension.
   them one at a time); it connects as the operator's `monitor` user. Once the cluster is
   Ready the exporter and HAProxy's own `/metrics` endpoint are published in
   `status.monitoring.sources`.
+- **Classes whose agents log in** (Releem, …): while one is bound, the provider copies the
+  operator's `monitor` user (the one PMM uses: `SELECT`, `PROCESS`, `REPLICATION CLIENT`,
+  `SUPER` and `RELOAD` on `*.*`) into `<instance>-monitoring-monitor`, a
+  `kubernetes.io/basic-auth` Secret owned by the Instance, and publishes it under the
+  `monitor` credential profile with one connection endpoint for the PXC nodes (container
+  `pxc`, port `mysql`, TLS required when `tls.mode` is `requireTLS`). The users Secret also
+  holds root, so it is never published itself. Every Sync copies the current password, and
+  the copy is deleted once no listed destination needs it. Nothing restarts.
 
 ### TLS
 
@@ -254,6 +307,9 @@ spec:
       issuer:                          # cert-manager
         name: corp-ca
         kind: ClusterIssuer            # Issuer (default) | ClusterIssuer
+        group: cert-manager.io         # default; the group of an external issuer
+      additionalNames:                 # DNS names clients use, besides the in-cluster ones
+        - mydb.company.com
 ```
 
 - **`preferTLS`** encrypts traffic between members and lets clients choose; **`requireTLS`**
@@ -268,16 +324,70 @@ spec:
      (`<instance>-pxc`, `<instance>-haproxy` or `<instance>-proxysql`, and their wildcard
      forms). A cert-manager `Certificate` writing such a secret works, and renewals roll out
      automatically; the operator never replaces secrets it did not create itself;
-  2. a cert-manager `issuer` — a `ClusterIssuer` requires cert-manager installed in the
-     cluster;
+  2. a cert-manager `issuer` — requires cert-manager installed in the cluster. Set `group`
+     (and the matching `kind`) for an external issuer such as AWS Private CA
+     (`awspca.cert-manager.io`) or Google CAS (`cas-issuer.jetstack.io`);
   3. otherwise the operator issues them: through cert-manager with a CA of its own when
      cert-manager is installed (renewed automatically), or else from a CA it generates once.
 
   The certificate source can't be changed after creation: a new CA would split members
   still trusting the old one.
+- **`additionalNames`** adds DNS names (no IP addresses) to the issued or generated
+  certificates, for clients that reach the cluster under another name, such as an exposed
+  proxy behind `mydb.company.com`. It can't be combined with `certificateSecretName`, whose
+  certificate carries its own names. Changing it on a running cluster reissues the
+  certificates from the same issuer and restarts the pods, so it holds for a
+  `tls-names-<hash>` maintenance approval (a rolling restart; see
+  `status.pendingMaintenance`). That needs certificates issued by cert-manager: on a cluster
+  whose certificates come from the CA the operator generated without it, the names can only
+  be set at creation.
 - **Clients** authenticate with their password and need only the CA to verify the cluster:
   the connection secret (`<instance>-conn`) carries it as `ca.crt`, and its `uri` sets `tls`
   to match the mode.
+
+#### Bring your own CA
+
+To have clients connect to `mydb.company.com` with full verification against your company CA,
+give cert-manager the CA and let it sign the cluster's certificates:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: company-ca
+  namespace: cert-manager          # the cluster resource namespace of cert-manager
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64 CA certificate>
+  tls.key: <base64 CA key>
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: company-ca
+spec:
+  ca:
+    secretName: company-ca
+---
+apiVersion: core.openeverest.io/v1alpha1
+kind: Instance
+metadata:
+  name: mydb
+spec:
+  # ...
+  parameters:
+    tls:
+      mode: requireTLS
+      issuer:
+        name: company-ca
+        kind: ClusterIssuer
+      additionalNames:
+        - mydb.company.com
+```
+
+Point `mydb.company.com` at the address clients reach the proxy on (for example its exposed
+load balancer). Clients then verify the server against `ca.crt` from `mydb-conn`, for
+instance `mysql --ssl-mode=VERIFY_IDENTITY --ssl-ca=ca.crt -h mydb.company.com …`.
 
 ## Development
 
@@ -323,9 +433,10 @@ code generation, and the backup/restore interfaces are documented once for all p
   `make test-integration-core-tls`, `make test-integration-backup`, …). The operator is
   scaled to 0 and status is simulated.
 - **E2E cluster tests** — `test/e2e-cluster/` runs against a real PXC operator (`core/tls`,
-  `datasource/backup`). Not executed on default CI runners; use `make deploy-provider-e2e`
-  then `make test-e2e-cluster` (or `make test-e2e-cluster-core-tls` for just the TLS suite)
-  locally.
+  `core/tls-issuer`, `datasource/backup`). Not executed on default CI runners; use
+  `make deploy-provider-e2e` then `make test-e2e-cluster` (or `make test-e2e-cluster-core-tls`
+  / `make test-e2e-cluster-core-tls-issuer` for just a TLS suite; the latter installs
+  cert-manager when absent) locally.
 - **CI** — [.github/workflows/ci.yaml](.github/workflows/ci.yaml) runs lint, build, unit
   tests, generated-file verification, Helm lint, and each integration suite on every pull
   request.

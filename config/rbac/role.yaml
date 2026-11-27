@@ -44,6 +44,13 @@ rules:
   - create
   - patch
 - apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - list
+  - watch
+- apiGroups:
   - backup.openeverest.io
   resources:
   - backupclasses
@@ -88,6 +95,13 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  verbs:
+  - get
+  - patch
 - apiGroups:
   - coordination.k8s.io
   resources:
