@@ -57,6 +57,19 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 		Kind:  "PerconaXtraDBClusterBackup",
 		Name:  backup.Name,
 	}
+
+	backupClass, err := c.BackupClassForInstance()
+	if err != nil {
+		return controller.BackupExecutionStatus{}, fmt.Errorf("get backup class for instance %q: %w", backup.Spec.Origin.InstanceRef.Name, err)
+	}
+	if err := validateBackupParameters(backupClass, backup.Spec.Parameters); err != nil {
+		return controller.BackupExecutionStatus{
+			State:             backupv1alpha1.BackupStateFailed,
+			Message:           fmt.Sprintf("spec.parameters: %v", err),
+			OperatorBackupRef: opRef,
+		}, nil
+	}
+
 	managedByRuntime := backup.Spec.ScheduleName == ""
 	ensureBackupControllerReference := func(opBackup *pxcv1.PerconaXtraDBClusterBackup) error {
 		if err := controllerutil.SetControllerReference(backup, opBackup, c.Client().Scheme()); err != nil {
@@ -66,7 +79,7 @@ func (p *PXCProvider) SyncBackup(c *controller.Context, backup *backupv1alpha1.B
 	}
 
 	opBackup := &pxcv1.PerconaXtraDBClusterBackup{}
-	err := c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Name}, opBackup)
+	err = c.Client().Get(c.Context(), client.ObjectKey{Namespace: backup.Namespace, Name: backup.Name}, opBackup)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return controller.BackupExecutionStatus{}, fmt.Errorf("get PerconaXtraDBClusterBackup %q: %w", backup.Name, err)
@@ -216,6 +229,18 @@ func (p *PXCProvider) SyncRestore(c *controller.Context, restore *backupv1alpha1
 		Group: pxcv1.SchemeGroupVersion.Group,
 		Kind:  "PerconaXtraDBClusterRestore",
 		Name:  restore.Name,
+	}
+
+	restoreClass, err := c.BackupClassForInstance()
+	if err != nil {
+		return controller.RestoreExecutionStatus{}, fmt.Errorf("get backup class for instance %q: %w", restore.Spec.InstanceRef.Name, err)
+	}
+	if err := validateRestoreParameters(restoreClass, restore.Spec.Parameters); err != nil {
+		return controller.RestoreExecutionStatus{
+			State:              backupv1alpha1.RestoreStateFailed,
+			Message:            fmt.Sprintf("spec.parameters: %v", err),
+			OperatorRestoreRef: opRef,
+		}, nil
 	}
 
 	opBackupName, desiredPITR, pending, err := resolveRestoreSource(c, restore, opRef)
