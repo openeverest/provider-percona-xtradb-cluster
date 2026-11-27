@@ -123,7 +123,13 @@ func TestSyncMonitorCredentialDeletesTheMirrorOnceNoClassRequiresIt(t *testing.T
 
 func TestMonitorConnectionSources(t *testing.T) {
 	t.Parallel()
-	mirror := monSecret("db-monitoring-monitor", map[string]string{"username": "monitor", "password": "p"})
+	// Each subtest gets its own Secret instance: subtests run in parallel,
+	// and the fake client mutates objects it is seeded with in place (e.g.
+	// setting their ResourceVersion), so sharing one *corev1.Secret across
+	// parallel subtests is a data race.
+	mirror := func() *corev1.Secret {
+		return monSecret("db-monitoring-monitor", map[string]string{"username": "monitor", "password": "p"})
+	}
 
 	tests := []struct {
 		name       string
@@ -134,16 +140,16 @@ func TestMonitorConnectionSources(t *testing.T) {
 		wantNone   bool
 	}{
 		{
-			name: "TLS accepted by default", pxc: monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false), objs: []client.Object{mirror},
+			name: "TLS accepted by default", pxc: monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false), objs: []client.Object{mirror()},
 			wantTLS: &corev1alpha1.ConnectionTLS{CA: &commonv1alpha1.CABundleSource{SecretKeyRef: &commonv1alpha1.SecretKeyRef{Name: "db-ssl", Key: "ca.crt"}}},
 		},
 		{
 			name: "TLS required", parameters: `{"tls":{"mode":"requireTLS"}}`,
-			pxc: monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false), objs: []client.Object{mirror},
+			pxc: monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false), objs: []client.Object{mirror()},
 			wantTLS: &corev1alpha1.ConnectionTLS{Required: true, CA: &commonv1alpha1.CABundleSource{SecretKeyRef: &commonv1alpha1.SecretKeyRef{Name: "db-ssl", Key: "ca.crt"}}},
 		},
 		{name: "no mirror", pxc: monLivePXC(pxcv1.AppStateReady, common.ProxyTypeHAProxy, false, false), wantNone: true},
-		{name: "no ready node", pxc: monLivePXC(pxcv1.AppStateInit, common.ProxyTypeHAProxy, false, false), objs: []client.Object{mirror}, wantNone: true},
+		{name: "no ready node", pxc: monLivePXC(pxcv1.AppStateInit, common.ProxyTypeHAProxy, false, false), objs: []client.Object{mirror()}, wantNone: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
