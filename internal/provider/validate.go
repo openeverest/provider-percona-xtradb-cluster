@@ -60,7 +60,7 @@ func (p *PXCProvider) Validate(in controller.ValidationInput) controller.Validat
 	}
 
 	errs = append(errs, validatePITR(instance.Spec.Backup)...)
-	errs = append(errs, validateBackupSchedules(instance.Spec.Backup)...)
+	errs = append(errs, validateBackupScheduleNames(instance.Spec.Backup)...)
 
 	tls, err := tlsParameters(instance)
 	if err != nil {
@@ -72,6 +72,34 @@ func (p *PXCProvider) Validate(in controller.ValidationInput) controller.Validat
 	}
 
 	return controller.ValidationResult{Errors: errs}
+}
+
+var _ controller.ReferenceValidator = (*PXCProvider)(nil)
+
+// ValidateReferences checks the rules that read other objects: the TLS
+// certificate Secrets, the running PerconaXtraDBCluster, and each backup
+// schedule's Parameters against the resolved BackupClass's parametersSchema
+// (a class-dependent check Validate cannot make, since it gets no Context).
+func (p *PXCProvider) ValidateReferences(c *controller.Context) (field.ErrorList, error) {
+	tls, err := tlsParameters(c.Instance())
+	if err != nil {
+		return nil, err
+	}
+
+	var errs field.ErrorList
+	tlsErrs, err := validateCertificateSecretsAndChange(c, tls, field.NewPath("spec", "parameters", "tls"))
+	if err != nil {
+		return nil, err
+	}
+	errs = append(errs, tlsErrs...)
+
+	scheduleErrs, err := validateBackupScheduleParameters(c)
+	if err != nil {
+		return nil, err
+	}
+	errs = append(errs, scheduleErrs...)
+
+	return errs, nil
 }
 
 // validatePITR checks the PITR parameters of each storage, and that at most

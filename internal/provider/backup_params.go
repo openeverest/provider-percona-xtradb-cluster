@@ -16,60 +16,70 @@ package provider
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 
+	backupv1alpha1 "github.com/openeverest/openeverest/v2/api/backup/v1alpha1"
+	apicommon "github.com/openeverest/openeverest/v2/api/common/v1alpha1"
+	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
+	"github.com/openeverest/openeverest/v2/provider-runtime/controller"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-
-	corev1alpha1 "github.com/openeverest/openeverest/v2/api/core/v1alpha1"
-
-	pxcclass "github.com/openeverest/provider-percona-xtradb-cluster/definition/backupclasses/pxc"
 )
 
 // Neither the core webhooks nor the runtime check Backup.spec.parameters,
 // Restore.spec.parameters or InstanceBackupSchedule.parameters against the
-// pxc BackupClass's schemas, so the provider does.
+// resolved BackupClass's schemas, so the provider does, using the same
+// apicommon.ParametersSchema.Validate the runtime already uses for PITR
+// parameters (see provider-runtime/internal/backupclass.PITRErrors). The
+// schemas themselves come entirely from the kubebuilder markers on
+// definition/backupclasses/pxc.PxcBackupConfig / PxcRestoreConfig — there is
+// no hand-written field list to keep in sync.
 
-// validateBackupParameters checks backup parameters (Backup.spec.parameters
-// or InstanceBackupSchedule.parameters) against the pxc class's
-// parametersSchema (PxcBackupConfig), which currently declares no fields.
-func validateBackupParameters(raw *runtime.RawExtension) error {
-	return decodeStrict(raw, &pxcclass.PxcBackupConfig{})
-}
-
-// validateRestoreParameters checks restore parameters against the pxc
-// class's restoreParametersSchema (PxcRestoreConfig), which declares no
-// fields.
-func validateRestoreParameters(raw *runtime.RawExtension) error {
-	return decodeStrict(raw, &pxcclass.PxcRestoreConfig{})
-}
-
-// decodeStrict decodes a parameters payload into target, rejecting fields
-// target does not declare. An absent or null payload leaves target as is.
-func decodeStrict(raw *runtime.RawExtension, target any) error {
-	if raw == nil || len(bytes.TrimSpace(raw.Raw)) == 0 {
+// normalizeRawParameters treats an empty payload or a literal JSON "null" as
+// absent, matching how the runtime's other generic parameters check
+// (checkParameters in provider-runtime/validation/schema.go, used for
+// Instance/component/topology parameters) treats a null value: no payload,
+// not an empty object the schema must still satisfy. ParametersSchema.Validate
+// itself has no such guard, since it decodes straight into map[string]any.
+func normalizeRawParameters(raw *runtime.RawExtension) *runtime.RawExtension {
+	if raw == nil {
 		return nil
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw.Raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(target); err != nil {
-		return fmt.Errorf("invalid parameters: %w", err)
+	switch trimmed := bytes.TrimSpace(raw.Raw); {
+	case len(trimmed) == 0, string(trimmed) == "null":
+		return nil
+	default:
+		return raw
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return errors.New("invalid parameters: unexpected data after the JSON object")
-	}
-	return nil
 }
 
-// validateBackupSchedules checks the schedules of each backup storage: each
-// schedule's Name must be unique across the whole Instance (the PXC operator
-// uses it as the PXCScheduledBackupSchedule entry's name — see
-// applyBackupSettings in backup_mirror.go), and its Parameters, when set,
-// must decode cleanly against the pxc class's schema.
-func validateBackupSchedules(backup *corev1alpha1.InstanceBackupSpec) field.ErrorList {
+// validateBackupParameters checks backup parameters (Backup.spec.parameters
+// or InstanceBackupSchedule.parameters) against bc's parametersSchema
+// (PxcBackupConfig, which currently declares no fields). A nil class (none
+// resolved) rejects any non-empty payload, the same as an undeclared schema.
+func validateBackupParameters(bc *backupv1alpha1.BackupClass, raw *runtime.RawExtension) error {
+	var schema apicommon.ParametersSchema
+	if bc != nil {
+		schema = bc.Spec.ParametersSchema
+	}
+	return schema.Validate(normalizeRawParameters(raw))
+}
+
+// validateRestoreParameters is the Restore.spec.parameters counterpart,
+// checked against bc's restoreParametersSchema (PxcRestoreConfig).
+func validateRestoreParameters(bc *backupv1alpha1.BackupClass, raw *runtime.RawExtension) error {
+	var schema apicommon.ParametersSchema
+	if bc != nil {
+		schema = bc.Spec.RestoreParametersSchema
+	}
+	return schema.Validate(normalizeRawParameters(raw))
+}
+
+// validateBackupScheduleNames rejects schedule names that repeat across all
+// storages on the Instance: the PXC operator uses Name as the unique
+// PXCScheduledBackupSchedule entry key (see applyBackupSettings in
+// backup_mirror.go). This needs no BackupClass, so it runs from Validate
+// (admission, no Context) rather than ValidateReferences.
+func validateBackupScheduleNames(backup *corev1alpha1.InstanceBackupSpec) field.ErrorList {
 	if backup == nil {
 		return nil
 	}
@@ -78,17 +88,39 @@ func validateBackupSchedules(backup *corev1alpha1.InstanceBackupSpec) field.Erro
 	seenNames := map[string]bool{}
 	for i, storage := range backup.Storages {
 		for j, schedule := range storage.Schedules {
-			path := storagesPath.Index(i).Child("schedules").Index(j)
-
+			path := storagesPath.Index(i).Child("schedules").Index(j).Child("name")
 			if seenNames[schedule.Name] {
-				errs = append(errs, field.Duplicate(path.Child("name"), schedule.Name))
+				errs = append(errs, field.Duplicate(path, schedule.Name))
 			}
 			seenNames[schedule.Name] = true
-
-			if err := validateBackupParameters(schedule.Parameters); err != nil {
-				errs = append(errs, field.Invalid(path.Child("parameters"), field.OmitValueType{}, err.Error()))
-			}
 		}
 	}
 	return errs
+}
+
+// validateBackupScheduleParameters checks every schedule's Parameters
+// against the live BackupClass's parametersSchema. Resolving the class
+// requires a Context (a BackupClass read), so this runs from
+// ValidateReferences, not Validate.
+func validateBackupScheduleParameters(c *controller.Context) (field.ErrorList, error) {
+	backup := c.Instance().Spec.Backup
+	if backup == nil {
+		return nil, nil
+	}
+	bc, err := c.BackupClassForInstance()
+	if err != nil {
+		return nil, err
+	}
+
+	var errs field.ErrorList
+	storagesPath := field.NewPath("spec", "backup", "storages")
+	for i, storage := range backup.Storages {
+		for j, schedule := range storage.Schedules {
+			path := storagesPath.Index(i).Child("schedules").Index(j).Child("parameters")
+			if err := validateBackupParameters(bc, schedule.Parameters); err != nil {
+				errs = append(errs, field.Invalid(path, field.OmitValueType{}, err.Error()))
+			}
+		}
+	}
+	return errs, nil
 }

@@ -211,13 +211,10 @@ func validateTLSParameters(tls definition.TLSParameters, path *field.Path) field
 	return errs
 }
 
-func (p *PXCProvider) ValidateReferences(c *controller.Context) (field.ErrorList, error) {
-	tls, err := tlsParameters(c.Instance())
-	if err != nil {
-		return nil, err
-	}
-	path := field.NewPath("spec", "parameters", "tls")
-
+// validateCertificateSecretsAndChange is the TLS half of ValidateReferences
+// (see validate.go): the certificate Secrets referenced by tls, and whether
+// tls changes the certificate source on an existing cluster.
+func validateCertificateSecretsAndChange(c *controller.Context, tls definition.TLSParameters, path *field.Path) (field.ErrorList, error) {
 	var errs field.ErrorList
 	for _, name := range []string{tls.CertificateSecretName, tls.InternalCertificateSecretName} {
 		if name == "" {
